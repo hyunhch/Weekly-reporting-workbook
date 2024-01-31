@@ -1,0 +1,86 @@
+﻿Option Explicit
+
+Private Sub Workbook_Open()
+
+    Dim RosterSheet As Worksheet
+    Dim CoverSheet As Worksheet
+    Dim ReportSheet As Worksheet
+    
+    Set RosterSheet = Worksheets("Roster Page")
+    Set CoverSheet = Worksheets("Cover Page")
+    Set ReportSheet = Worksheets("Report Page")
+    
+    RosterSheet.Protect , userinterfaceonly:=True, AllowSorting:=True, AllowFiltering:=True
+    CoverSheet.Protect , userinterfaceonly:=True, AllowSorting:=True, AllowFiltering:=True
+    ReportSheet.Protect , userinterfaceonly:=True, AllowSorting:=True, AllowFiltering:=True, AllowFormattingColumns:=True
+
+    'Only need to protect those particular headers
+    RosterSheet.Cells.Locked = False
+    RosterSheet.Range("A1:H1").Locked = True
+
+End Sub
+
+Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+
+'Filling in the Logic Model category when a practice is selected
+    If InStr(ActiveSheet.Name, "Activity") Then
+        Dim Fill As String
+        Dim PracticeRow As Variant
+        Dim ActArray As Variant
+        
+        'Application.EnableEvents = False
+      
+        Set ActArray = Worksheets("Ref Tables").ListObjects("ActivitiesTable") 'Grab activity table
+        
+        If Target.Address = "$F$1" Then 'If you change the dropdown, fill the row below
+            Fill = Range("F1").Value 'Grab the contents of the dropdown selection
+            'Debug.Print (Fill)
+            Set PracticeRow = ActArray.Range.Find(Fill)
+            If Not PracticeRow Is Nothing Then
+                PracticeRow = ActArray.Range.Find(Fill).Row
+                Range("F2").Value = ActArray.Range(PracticeRow, 1).Value 'Fill the next row
+                Range("F2").WrapText = False
+            Else
+                Range("F2").Value = "" 'Clear if empty
+
+            End If
+        End If
+        'Application.EnableEvents = True
+    End If
+
+End Sub
+
+Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range) 'Expand the dropdown list
+    
+    Dim SheetName As String
+    Dim OldWidth As Double
+    
+    SheetName = ActiveSheet.Name
+    
+    If InStr(SheetName, "Activity") > 0 Then
+        If Target.Address = "$F$1" Then
+            Target.Columns.ColumnWidth = 40
+        Else
+            Range("F6:F200").Columns.AutoFit 'Autofit to the student roster, not the selected practice
+        End If
+    End If
+    
+End Sub
+
+Private Sub Workbook_SheetBeforeDoubleClick(ByVal Sh As Object, ByVal Target As Range, Cancel As Boolean)
+'Marlett checkboxes. Using these instead of actual checkboxes due to issues with sorting
+'Checks that the font instead of range. Should allow for dynamic table size
+
+    If Target.Cells.Count > 1 Then
+        Exit Sub
+    End If
+    
+    Cancel = True
+    If Target.Font.Name = "Marlett" Then
+        If Target.Value = "" Then
+            Target.Value = "a"
+        Else
+            Target.Value = ""
+        End If
+    End If
+End Sub
