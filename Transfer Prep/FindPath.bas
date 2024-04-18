@@ -938,3 +938,11 @@ DecodeUTF8: 'By abusing error handling, code duplication is avoided
         Resume Next 'Clear the error object, and jump back to the statement
     #End If         'after where the pseudo "Error" was raised.
 End Function
+
+
+
+
+
+
+
+

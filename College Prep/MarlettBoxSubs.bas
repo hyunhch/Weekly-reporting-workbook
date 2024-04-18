@@ -1,13 +1,24 @@
 Attribute VB_Name = "MarlettBoxSubs"
+Option Explicit
+
 Sub AddMarlettBox(BoxHere As Range, TargetSheet As Worksheet)
 'Doing this instead of actual checkboxes to deal with sorting issues
 'This only changes the font of a range to Marlett
+    
+    Dim c As Range
 
     With BoxHere
         .Font.Name = "Marlett"
-        .Value = ""
+        .HorizontalAlignment = xlRight
     End With
-
+    
+    'Preserve checks, but get rid of anything other than an "a"
+    For Each c In BoxHere
+        If c.Value <> "a" Then
+            c.Value = ""
+        End If
+    Next c
+    
 End Sub
 
 Sub AddSelectAll(BoxHere As Range, TargetSheet As Worksheet)
@@ -25,128 +36,97 @@ Sub AddSelectAll(BoxHere As Range, TargetSheet As Worksheet)
 
 End Sub
 
-Sub AddDeselectAll(BoxHere As Range, TargetSheet As Worksheet)
-'Insert a button
 
-    Dim NewButton As Button
-    
-    Set NewButton = TargetSheet.Buttons.Add(BoxHere.Left, BoxHere.Top, _
-        BoxHere.Width, BoxHere.Height)
-    
-    With NewButton
-        .OnAction = "DeselectAll"
-        .Caption = "Deselect All"
-    End With
+Function FindChecks(TargetRange As Range) As Range
+'Returns a range that contains all cells that are not empty
 
-End Sub
-
-Sub SelectAll()
-'For current sheet. Looks for font
-
-    Dim FRow As Long
-    Dim LRow As Long
-    Dim CheckRange As Range
-    Dim i As Long
+    Dim CheckedRange As Range
+    Dim c As Range
     
-    FRow = ActiveSheet.Range("A:A").Find("Select", LookIn:=xlValues).Row
-    
-    'In case the column name was changed or there is some other problem
-    If Not FRow > 0 Then
-        MsgBox ("There is a problem with the table." & vbCr & _
-            "Please make sure the first column is named ""Select""")
-        Exit Sub
-    End If
-    
-    LRow = ActiveSheet.Cells(Rows.Count, 2).End(xlUp).Row
-    
-    'Check that there is at least row of students
-    'The report sheet needs to be offset an additional row
-    If ActiveSheet.Name = "Report Page" Then
-        GoTo ReportProcedure
-    End If
-    
-    If Not LRow > FRow Then
-        MsgBox ("Please add at least one row to the table.")
-        Exit Sub
-    End If
-    
-    Set CheckRange = ActiveSheet.Range(Cells(FRow + 1, 1).Address, Cells(LRow, 1).Address)
-    CheckRange.Font.Name = "Marlett"
-    
-    'Check all if any are blank, uncheck all if none are blank
-    If Application.CountIf(CheckRange, "a") = LRow - (FRow) Then
-        CheckRange.Value = ""
-    Else
-        CheckRange.Value = "a"
-    End If
-    
-    Exit Sub
-    
-    'Report Page
-ReportProcedure:
-    If Not LRow > FRow + 1 Then
-        MsgBox ("Please add at least one row to the table.")
-        Exit Sub
-    End If
-
-    Set CheckRange = ActiveSheet.Range(Cells(FRow + 2, 1).Address, Cells(LRow, 1).Address)
-    CheckRange.Font.Name = "Marlett"
-
-    If Application.CountIf(CheckRange, "a") = LRow - (FRow + 1) Then
-        CheckRange.Value = ""
-    Else
-        CheckRange.Value = "a"
-    End If
-    
-End Sub
-
-Sub DeselectAll()
-'For current sheet. Looks for font
-'Currently not using this, using "Select All" button to do both
-
-    Dim FRow As Long
-    Dim LRow As Long
-    Dim i As Long
-    
-    FRow = ActiveSheet.Range("A:A").Find("Select", LookIn:=xlValues).Row
-    
-    'In case the column name was changed or there is some other problem
-    If Not FRow > 0 Then
-        MsgBox ("There is a problem with the table." & vbCr & _
-            "Please make sure the first column is named ""Select""")
-        Exit Sub
-    End If
-    
-    LRow = ActiveSheet.Cells(Rows.Count, 1).End(xlUp).Row
-    
-    'Check that there is at least row of students
-    If Not LRow > FRow Then
-        MsgBox ("Please add at least one student to the table.")
-        Exit Sub
-    End If
-    
-    For i = FRow + 1 To LRow
-        ActiveSheet.Cells(i, 1).Font.Name = "Marlett"
-        ActiveSheet.Cells(i, 1).Value = ""
-    Next i
-
-End Sub
-
-Function AnyChecked(StartRow As Long, StopRow As Long, TargetSheet As Worksheet) As Boolean
-'Check to see if any students have been checked
-
-    Dim CheckRange As Range
-    Dim CheckCell As Range
-    
-    AnyChecked = False
-    Set CheckRange = TargetSheet.Range(Cells(StartRow, 1).Address, Cells(StopRow, 1).Address)
-    
-    For Each CheckCell In CheckRange
-        If CheckCell.Value = "a" Then
-            AnyChecked = True
-            Exit Function
+    For Each c In TargetRange
+        If c.Value <> "" Then
+            If Not CheckedRange Is Nothing Then
+                Set CheckedRange = Union(CheckedRange, c)
+            Else
+                Set CheckedRange = c
+            End If
         End If
-    Next CheckCell
+    Next c
+    
+    Set FindChecks = CheckedRange
 
 End Function
 
+
+Function CountChecks(TargetRange As Range) As Long
+'Returns a range that contains all cells with a checkmark
+
+    Dim CheckedRange As Range
+    Dim c As Range
+    
+    CountChecks = 0
+    
+    For Each c In TargetRange
+        If c.Value <> "" Then
+            CountChecks = CountChecks + 1
+        End If
+    Next c
+    
+End Function
+
+Sub CopySelected(ActivitySheet As Worksheet, Optional HowMany As String)
+'Copying all students who had been checked on the Roster sheet or marked on the Records sheet
+    
+    Dim RosterSheet As Worksheet
+    Dim RosterTableStart As Range
+    Dim SearchRange As Range
+    Dim CopyRange As Range
+    Dim PasteRange As Range
+    Dim i As Long
+    
+    Set RosterSheet = Worksheets("Roster Page")
+    Set RosterTableStart = RosterSheet.Range("A6")
+    Set SearchRange = RosterSheet.ListObjects("RosterTable").ListColumns("Select").Range
+    Set PasteRange = ActivitySheet.Range("A6")
+    
+    'Make sure the roster isn't empty
+    If Not CheckTableLength(RosterSheet, RosterTableStart) > 0 Then
+        MsgBox ("You don't have any students on this page.")
+        GoTo Footer
+    End If
+    
+    'If all students or checked students are copied
+    If Not HowMany = "All" Then
+        GoTo OnlyChecked
+    End If
+    
+    'All students
+    For i = 0 To RosterSheet.ListObjects("RosterTable").Range.Rows.Count
+        RosterSheet.ListObjects("RosterTable").Range.Rows(i).EntireRow.Copy
+        PasteRange.Offset(i - 1, 0).PasteSpecial xlPasteValues
+    Next i
+    GoTo Footer
+    
+OnlyChecked:
+    'Make sure at least one student is selected
+    If FindChecks(SearchRange) Is Nothing Then
+        MsgBox ("Please select at least one student")
+        GoTo Footer
+    Else
+        Set CopyRange = FindChecks(SearchRange)
+    End If
+
+    'Copy each checked row
+    'The header and rows are copied as well
+    Dim c As Range
+
+    i = 0
+    For Each c In CopyRange
+        c.EntireRow.Copy
+        PasteRange.Offset(i, 0).PasteSpecial xlPasteValues
+        i = i + 1
+    Next c
+        
+Footer:
+
+End Sub
