@@ -220,5 +220,24 @@ Footer:
 
 End Sub
 
+Private Sub LoadActivityFilterTextBox_Change()
+'Dynamic filter for the activity list
 
-
+    Dim i As Long
+    Dim testString As String
+    
+    testString = LCase("*" & LoadActivityFilterTextBox.Text & "*")
+    Call UserForm_Activate
+    
+    With LoadActivitySelectBox
+        For i = .ListCount - 1 To 0 Step -1
+            If (Not (LCase(.List(i, 0)) Like testString)) _
+            And (Not (LCase(.List(i, 1)) Like testString)) _
+            And (Not (LCase(.List(i, 2)) Like testString)) _
+            Then
+                .RemoveItem i
+            End If
+        Next i
+    End With
+    
+End Sub

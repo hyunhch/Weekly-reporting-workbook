@@ -39,10 +39,10 @@ Private Sub AddStudentsConfirmButton_Click()
     End If
 
     'Make sure the roster is parsed
-    Call ReadRosterButton
-    Application.EnableEvents = False
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
+    If Worksheets("Roster Page").ListObjects.Count < 1 Then
+        MsgBox ("Please parse the roster and try again.")
+        GoTo Footer
+    End If
 
     'Grab the label and find it on the Records sheet
     Dim LabelMatch As Range
@@ -107,7 +107,7 @@ SearchNames:
     Dim LRow As Long
     
     Set RosterSheet = Worksheets("Roster Page")
-    Set RosterChecks = RosterSheet.ListObjects("RosterTable").ListColumns("Select").DataBodyRange
+    Set RosterChecks = RosterSheet.ListObjects("RosterTable").ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)
     Set RosterNames = FindChecks(RosterChecks)
     Set ActivityNames = ActivitySheet.ListObjects(1).ListColumns("First").DataBodyRange
     

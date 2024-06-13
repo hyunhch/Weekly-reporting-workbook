@@ -83,6 +83,9 @@ Sub ClearReportTotals()
     Set ReportSheet = Worksheets("Report Page")
     Set DelRange = FindReportRange("Select", "Other Grade")
     
+    'Unprotect
+    Call UnprotectCheck(ReportSheet)
+    
     'Delete the row beneath the header
     DelRange.Offset(1, 0).ClearContents
 

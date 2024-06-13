@@ -3,10 +3,15 @@ Option Explicit
 
 Sub PullReportTotalsButton()
 'Calls PullReportTotals()
+    Dim ReportSheet As Worksheet
 
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+    
+    'Unprotect
+    Set ReportSheet = Worksheets("Report Page")
+    Call UnprotectCheck(ReportSheet)
     
     'First make sure the roster is parsed, then pull. Tabulation looks at a table object on the Roster sheet
     Call ReadRosterButton
@@ -25,7 +30,6 @@ Sub ClearReportButton(Optional ShowWarning As Long)
 'Resets the Report sheet
 
     Dim ReportSheet As Worksheet
-    Dim LRow As Long
     Dim DelConfirm As Long
     
     Application.EnableEvents = False
@@ -43,20 +47,21 @@ Sub ClearReportButton(Optional ShowWarning As Long)
         End If
     End If
     
+    'Make sure there is at least one activity. We can skip the entire function if there isn't
+    If CheckTableLength(ReportSheet, ReportSheet.Range("B:B").Find("Center", , xlValues, xlWhole)) = 0 Then
+        GoTo Footer
+    End If
+    
     'Unprotect
     Call UnprotectCheck(ReportSheet)
     
     'Find the last row with anything in it
-    Dim LabelCell As Range
-    Dim i As Long
+    Dim StartCell As Range
+    Dim EndCell As Range
     
-    Set LabelCell = FindReportRange("Label")
-    LRow = LabelCell.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
-    
-    'Delete each row
-    For i = LRow To LabelCell.Row + 1 Step -1
-        ReportSheet.Cells(i, 1).EntireRow.Delete
-    Next i
+    Set StartCell = FindReportRange("Select").Offset(1, 0)
+    Set EndCell = ReportSheet.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+    ReportSheet.Range(StartCell, EndCell).EntireRow.ClearContents
     
     'Reprotect
     Call ResetProtection

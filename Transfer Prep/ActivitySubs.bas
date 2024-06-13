@@ -187,7 +187,7 @@ Function SaveActivity() As Boolean
     Dim SearchRange As Range
     Dim CopyRange As Range
     
-    Set SearchRange = ActivitySheet.ListObjects(1).ListColumns("Select").DataBodyRange
+    Set SearchRange = ActivitySheet.ListObjects(1).ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)
     
     If SearchRange Is Nothing Then
         MsgBox ("You have no students on this sheet. Please add at least one.")
@@ -216,7 +216,6 @@ Function SaveActivity() As Boolean
     Dim FRow As Long
     Dim LRow As Long
     
-    'Set CopyRange = FindChecks(SearchRange).Offset(0, 1) 'Range of first names of selected students
     Set RecordsSheet = Worksheets("Records Page")
     FRow = RecordsSheet.Range("A:A").Find("H BREAK", , xlValues, xlWhole).Row
     LRow = RecordsSheet.Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row

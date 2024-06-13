@@ -29,6 +29,11 @@ Sub PullReportTotals()
     'Clear the contents
     TotalRange.EntireRow.ClearContents
     
+    'Make sure there is at least one student. We can skip the entire function if there isn't
+    If CheckTableLength(RosterSheet, RosterSheet.Range("B:B").Find("First", , xlValues, xlWhole)) = 0 Then
+        GoTo Footer
+    End If
+    
     'Grab the entire first name column from the Roster Page
     Dim TempArray As Variant
     Dim NameRange As Range
@@ -73,6 +78,8 @@ Sub PullReportTotals()
     
     'Apply bold font
     TotalRange.EntireRow.Font.Bold = True
+
+Footer:
 
 End Sub
 

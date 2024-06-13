@@ -187,7 +187,7 @@ Function SaveActivity() As Boolean
     Dim SearchRange As Range
     Dim CopyRange As Range
     
-    Set SearchRange = ActivitySheet.ListObjects(1).ListColumns("Select").DataBodyRange
+    Set SearchRange = ActivitySheet.ListObjects(1).ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)
     
     If SearchRange Is Nothing Then
         MsgBox ("You have no students on this sheet. Please add at least one.")

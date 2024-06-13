@@ -4,10 +4,13 @@ Option Explicit
 Function NewSaveBook(PasteBook As Workbook, CopyCover As Worksheet, CopyRoster As Worksheet, CopyReport As Worksheet, CopyRecords As Worksheet, SheetNameArray As Variant, Optional SaveType As String) As Boolean
 'Create a new workbook to save or upload, depending on what is passed to it
 
-    Dim TableStart As Range
+    Dim ReportTableStart As Range
+    Dim RecordsTableStart As Range
+    Dim AttendanceTableStart As Range
     Dim CoverRange As Range
     Dim ReportRange As Range
     Dim RecordsRange As Range
+    Dim RosterRange As Range
     Dim c As Range
     Dim i As Long
     
@@ -25,15 +28,16 @@ Function NewSaveBook(PasteBook As Workbook, CopyCover As Worksheet, CopyRoster A
     PasteBook.Worksheets("Sheet1").Delete
     
     'Define the areas to copy
-    Set TableStart = CopyReport.Range("A:A").Find("Select", , xlValues, xlWhole)
-    Set ReportRange = FindTableRange(CopyReport, TableStart)
+    Set ReportTableStart = CopyReport.Range("A:A").Find("Select", , xlValues, xlWhole)
+    Set ReportRange = FindTableRange(CopyReport, ReportTableStart)
 
     If SaveType = "SharePoint" Then
         GoTo Copy
     Else
         Set CoverRange = CopyCover.Range("A1:B5")
-        Set TableStart = CopyRecords.Range("A1")
-        Set RecordsRange = FindTableRange(CopyRecords, TableStart)
+        Set RecordsTableStart = CopyRecords.Range("A1")
+        Set RecordsRange = FindTableRange(CopyRecords, RecordsTableStart)
+        Set RosterRange = CopyRoster.ListObjects("RosterTable").Range
     End If
     
 Copy:
@@ -51,10 +55,14 @@ Copy:
         PasteBook.Worksheets("Attendance").Range("A1").PasteSpecial
     End If
     
+    'Copy over the roster
+    RosterRange.Copy
+    PasteBook.Worksheets("Roster").Range("A1").PasteSpecial
+    PasteBook.Worksheets("Roster").Range("A1").EntireColumn.Delete
+    
     'Use the Roster to make a detailed attendance report
     Dim DetailedSheet As Worksheet
     Dim AttendanceSheet As Worksheet
-    Dim RosterRange As Range
     Dim NewRecordsRange As Range
     Dim ActivityLabel As String
     
@@ -79,6 +87,7 @@ Copy:
     
     'Loop through and make a new row for each time a student was marked present
     Dim NameCell As Range
+    Dim CopyRange As Range
     Dim CopyArray() As Variant
     Dim FRow As Long
     Dim FCol As Long
@@ -92,7 +101,7 @@ Copy:
         FCol = .Range("1:1").Find("V BREAK", , xlValues, xlWhole).Column + 1
         LRow = .Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
         LCol = .Range("1:1").Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
-        Set TableStart = .Range(Cells(FRow + 1, FCol + 1).Address, Cells(LRow, LCol).Address) 'Reusing this variable
+        Set AttendanceTableStart = .Range(Cells(FRow + 1, FCol + 1).Address, Cells(LRow, LCol).Address)
         
         k = 2
         For i = FRow To LRow
@@ -119,7 +128,8 @@ Copy:
         End If
         'Start from the Ethnicity column and go to the end of the table. Copy the student information
         Erase CopyArray
-        CopyArray = WorksheetFunction.Transpose(CopyRoster.Range(Cells(NameCell.Row, 4).Address, Cells(NameCell.Row, CopyRoster.ListObjects("RosterTable").ListColumns.Count).Address).Value)
+        Set CopyRange = CopyRoster.Range(Cells(NameCell.Row, 4).Address, Cells(NameCell.Row, CopyRoster.ListObjects("RosterTable").ListColumns.Count).Address)
+        CopyArray = WorksheetFunction.Transpose(CopyRange)
         DetailedSheet.Range(Cells(i, 7).Address, Cells(i, 6 + UBound(CopyArray)).Address).Value = Application.Transpose(CopyArray) 'Array is starting at 1 here
 SkipName:
     Next i

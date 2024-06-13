@@ -121,7 +121,7 @@ OnlyChecked:
     Dim c As Range
 
     i = 0
-    For Each c In CopyRange
+    For Each c In CopyRange.SpecialCells(xlCellTypeVisible) 'We only want the visible cells so that filtering works as intended
         c.EntireRow.Copy
         PasteRange.Offset(i, 0).PasteSpecial xlPasteValues
         i = i + 1

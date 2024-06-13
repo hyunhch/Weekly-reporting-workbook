@@ -106,6 +106,9 @@ Sub CopySelected(ActivitySheet As Worksheet, Optional HowMany As String)
     GoTo Footer
     
 OnlyChecked:
+    'Restrict to visible cells only
+    Set SearchRange = SearchRange.SpecialCells(xlCellTypeVisible)
+
     'Make sure at least one student is selected
     If FindChecks(SearchRange) Is Nothing Then
         MsgBox ("Please select at least one student")
@@ -119,7 +122,7 @@ OnlyChecked:
     Dim c As Range
 
     i = 0
-    For Each c In CopyRange
+    For Each c In CopyRange.SpecialCells(xlCellTypeVisible) 'We only want the visible cells so that filtering works as intended
         c.EntireRow.Copy
         PasteRange.Offset(i, 0).PasteSpecial xlPasteValues
         i = i + 1

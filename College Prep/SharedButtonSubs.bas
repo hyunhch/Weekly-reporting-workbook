@@ -8,7 +8,10 @@ Sub SelectAllButton()
     Dim LRow As Long
     Dim CheckRange As Range
     Dim i As Long
-    
+   
+    'Unprotect
+    Call UnprotectCheck(ActiveSheet)
+   
     FRow = ActiveSheet.Range("A:A").Find("Select", LookIn:=xlValues).Row
     
     'In case the column name was changed or there is some other problem
@@ -41,6 +44,8 @@ Sub SelectAllButton()
     Else
         CheckRange.SpecialCells(xlCellTypeVisible).Value = "a"
     End If
+    
+    Call ResetProtection
     
 End Sub
 
@@ -103,13 +108,17 @@ Sub RemoveSelectedButton()
             Set PasteBook = Workbooks.Add
             
             With PasteBook
-                'Copy over the first row of the Records sheet to get all the activities
-                RecordsSheet.Range("A1").EntireRow.Copy
+                'Copy over the rows containing activity information on the Records sheet
+                RecordsSheet.Range("A1:A3").EntireRow.Copy
                 Worksheets("Sheet1").Range("A1").PasteSpecial xlPasteValues
                 
-                'Overwrite the first two header columns
-                Worksheets("Sheet1").Range("A1").Value = "First"
-                Worksheets("Sheet1").Range("B1").Value = "Last"
+                'Delete the padding cell and shift these over one column
+                Worksheets("Sheet1").Range("B:B").Delete
+                Worksheets("Sheet1").Range("A:A").Insert Shift:=xlToRight
+                
+                'Headers for student names
+                Worksheets("Sheet1").Range("A5").Value = "First"
+                Worksheets("Sheet1").Range("B5").Value = "Last"
             End With
             
             CopyBook.Activate
@@ -143,7 +152,8 @@ Sub RemoveSelectedButton()
     'I'm not going to make this an option, students *will* be removed from saved activities if they are removed from the roster
     'DelConfirm = MsgBox("Do you wish to remove these students from all saved activities as well?", vbQuestion + vbYesNo + vbDefaultButton2)
 
-   'Loop backward through the rows
+    'Loop backward through the rows
+    LRow = DelSheet.Range("B:B").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
     j = 1
     For i = LRow To TableStart.Row + 1 Step -1
         If DelSheet.Cells(i, 1).Value <> "" Then
@@ -153,7 +163,7 @@ Sub RemoveSelectedButton()
             If SaveConfirm = vbYes Then
                 j = j + 1
                 Set CopyRange = RecordsSheet.Range(DelCell, DelCell.Offset(0, LCol - 1))
-                Set PasteRange = PasteBook.Worksheets("Sheet1").Range(Cells(j, 1).Address, Cells(j, LCol).Address)
+                Set PasteRange = PasteBook.Worksheets("Sheet1").Range(Cells(j + 3, 1).Address, Cells(j + 3, LCol).Address)
                 PasteRange.Value = CopyRange.Value
                 
                 For Each c In PasteRange
@@ -164,9 +174,14 @@ Sub RemoveSelectedButton()
                 CopyBook.Activate
             End If
             
+            'If on the roster sheer, delete the row. If on an activity sheet, clear attendance information for that activity
             If Not DelCell Is Nothing Then
-                DelCell.EntireRow.Delete
-                      
+                If DelSheet.Name = "Roster Page" Then
+                    DelCell.EntireRow.Delete
+                ElseIf DelSheet.Name <> "Roster Page" And DelSheet.Name <> "Report Page" Then
+                    Set CopyRange = RecordsSheet.Range(DelCell, DelCell.Offset(0, LCol - 1))
+                    CopyRange.Value = ""
+                End If
             End If
             DelSheet.Cells(i, 1).EntireRow.Delete
         End If
@@ -197,11 +212,11 @@ Sub RemoveSelectedButton()
             End If
 SkipSheet:
         Next ActivitySheet
-        
-        'Retabulate the totals and all saved activities on the Report sheet. This function parses the roster as well
-        Call PullReportTotalsButton
-        Call RetabulateActivities
     End If
+ 
+    'Retabulate the totals and all saved activities on the Report sheet. This function parses the roster as well
+    Call PullReportTotalsButton
+    Call RetabulateActivities
     
 Footer:
     Call ResetProtection
@@ -211,6 +226,3 @@ Footer:
     Application.EnableEvents = True
 
 End Sub
-
-
-

@@ -110,7 +110,7 @@ Sub LocalSave()
     End If
         
     'Names of the new sheets we'll have
-    NewSheetNames = Split("Detailed Attendance;Attendance;Report;Cover", ";")
+    NewSheetNames = Split("Detailed Attendance;Attendance;Roster;Report;Cover", ";")
         
     'Create a new workbook and pass to populate it
     Set CopyBook = ActiveWorkbook

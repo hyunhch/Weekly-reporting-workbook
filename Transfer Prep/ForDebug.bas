@@ -10,22 +10,6 @@ Sub ScreenUpdating()
 End Sub
 
 Sub testing()
-    Dim RosterSheet As Worksheet
-    Dim NewButton As Button
-    Dim NewButtonRange As Range
-    
-    Set RosterSheet = Worksheets("Roster Page")
-
-    'Add students
-    Set NewButtonRange = RosterSheet.Range("H1:I1")
-    Set NewButton = RosterSheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-        
-    With NewButton
-        .OnAction = "AddSelectedStudentsButton"
-        .Caption = "Add Selected Students"
-    End With
-    
 End Sub
 
 Sub RosterButtons()

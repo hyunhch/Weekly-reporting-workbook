@@ -42,8 +42,8 @@ Sub CenterDropdown(NewSheet As Worksheet, CenterRange As Range)
     
 End Sub
 
-Sub ClearSheet(DelStart As Range, Repull As Long, TargetSheet As Worksheet)
-'Repull = 1 avoids warning message
+Sub ClearSheet(DelStart As Range, Warning As Long, TargetSheet As Worksheet)
+'Warning = 1 avoids warning message
 
     Dim DelRange As Range
     Dim ClearAll As Long
@@ -51,7 +51,7 @@ Sub ClearSheet(DelStart As Range, Repull As Long, TargetSheet As Worksheet)
 
     Set DelRange = TargetSheet.Range(Cells(DelStart.Row, DelStart.Column).Address, Cells(TargetSheet.Rows.Count, TargetSheet.Columns.Count).Address)
    
-    If Repull <> 1 Then
+    If Warning <> 1 Then
             ClearAll = MsgBox("Are you sure you want to clear all content?" & vbCrLf & "This cannot be undone.", vbQuestion + vbYesNo + vbDefaultButton2, "")
     Else
         ClearAll = vbYes

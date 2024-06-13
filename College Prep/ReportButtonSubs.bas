@@ -43,20 +43,22 @@ Sub ClearReportButton(Optional ShowWarning As Long)
         End If
     End If
     
+    'Make sure there is at least one activity. We can skip the entire function if there isn't
+    If CheckTableLength(ReportSheet, ReportSheet.Range("B:B").Find("Center", , xlValues, xlWhole)) = 0 Then
+        GoTo Footer
+    End If
+    
     'Unprotect
     Call UnprotectCheck(ReportSheet)
     
-    'Find the last row with anything in it
-    Dim LabelCell As Range
-    Dim i As Long
+    'Find the data range and clear contents
+    'We aren't using ClearSheet() because it will clear formatting
+    Dim StartCell As Range
+    Dim EndCell As Range
     
-    Set LabelCell = FindReportRange("Label")
-    LRow = LabelCell.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
-    
-    'Delete each row
-    For i = LRow To LabelCell.Row + 1 Step -1
-        ReportSheet.Cells(i, 1).EntireRow.Delete
-    Next i
+    Set StartCell = FindReportRange("Select").Offset(1, 0)
+    Set EndCell = ReportSheet.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+    ReportSheet.Range(StartCell, EndCell).EntireRow.ClearContents
     
     'Reprotect
     Call ResetProtection
