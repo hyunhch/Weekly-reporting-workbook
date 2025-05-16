@@ -1,0 +1,50 @@
+﻿Option Explicit
+
+Private Sub Worksheet_Activate()
+
+    'Disable the table auto-expand feature
+    Application.AutoCorrect.AutoExpandListRange = False
+    
+End Sub
+
+Private Sub Worksheet_Change(ByVal Target As Range)
+
+    Dim RosterSheet As Worksheet
+    Dim RefSheet As Worksheet
+    Dim ColorRange As Range
+    Dim EditRange As Range
+    Dim c As Range
+    Dim d As Range
+    Dim NumCols As Long
+    Dim IntersectArray As Variant
+    Dim IntersectValue As Variant
+    
+    On Error GoTo Footer
+    
+    Set RosterSheet = Worksheets("Roster Page")
+    Set RefSheet = Worksheets("Ref Tables")
+    Set ColorRange = RosterSheet.Range("A1:C3")
+    
+    'We want the columns between "Select" and "Notes", which bookend the headers
+    NumCols = RefSheet.Range("ColumnNamesList").Cells.Count - 2
+    
+    Set c = RosterSheet.Range("B1")
+    Set d = c.Offset(0, NumCols - 1)
+    Set EditRange = RosterSheet.Range(c, d).EntireColumn
+    
+    'Skip if there's not a table on the sheet
+        If RosterSheet.ListObjects.Count < 1 Then
+            GoTo Footer
+        End If
+    
+    'If an edit is made in the default columns
+    If Not Intersect(Target, EditRange) Is Nothing Then
+        Call UnprotectSheet(RosterSheet)
+        ColorRange.Interior.ColorIndex = 43
+        Call ResetProtection
+    End If
+    
+Footer:
+    
+End Sub
+

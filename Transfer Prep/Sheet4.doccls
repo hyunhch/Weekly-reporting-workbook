@@ -1,8 +1,0 @@
-﻿Option Explicit
-
-Private Sub Worksheet_Activate()
-
-    'Disable the table auto-expand feature
-    Application.AutoCorrect.AutoExpandListRange = False
-    
-End Sub
