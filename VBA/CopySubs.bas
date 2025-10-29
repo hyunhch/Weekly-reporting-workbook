@@ -106,6 +106,10 @@ Function CopyFromRecords(RecordsSheet As Worksheet, ActivitySheet As Worksheet, 
     Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
     
     'All present students
+    If PresentRange Is Nothing Then
+        GoTo CopyAbsent
+    End If
+
     If OperationString <> "Absent" Then
         Set PasteRange = ActivityNameHeader.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Offset(1, 0)
         Set TempRange = FindName(PresentRange, RosterNameRange)
@@ -138,6 +142,10 @@ Function CopyFromRecords(RecordsSheet As Worksheet, ActivitySheet As Worksheet, 
 
 CopyAbsent:
     'All absent students
+    If AbsentRange Is Nothing Then
+        GoTo RemakeTable
+    End If
+    
     If OperationString <> "Present" Then
         Set PasteRange = ActivityNameHeader.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Offset(1, 0)
         Set TempRange = FindName(AbsentRange, RosterNameRange)
@@ -529,6 +537,8 @@ CopyStudents:
     'No new students to add
     If AddStudentRange Is Nothing Then
         GoTo CleanUp
+    ElseIf RecordsNameRange Is Nothing Then
+        GoTo CleanUp
     End If
 
     'Copy over unique students
@@ -636,6 +646,9 @@ Function CopyToReport(ReportSheet As Worksheet, PasteCell As Range, PasteArray A
     If j > 0 Then
         PasteArray(OtherIndex, 2) = PasteArray(OtherIndex, 2) + j
         Set c = ReportHeaderRange.Find(OtherString, , xlValues, xlWhole)
+            If c Is Nothing Then 'For Low Income and First Generation
+                GoTo ReturnRange
+            End If
         Set d = ReportSheet.Cells(PasteCell.Row, c.Column)
         
         d.Value = PasteArray(OtherIndex, 2)

@@ -52,8 +52,8 @@ IncompleteMessage:
     Select Case ErrorString
         Case "Cover Page"
             FullErrorString = "Please completely fill out the Cover Page and retabulate your activities."
-        Case "Report Page"
-            FullErrorString = "There are no activities tabulated on the Report Page."
+        'Case "Report Page"
+            'FullErrorString = "There are no activities tabulated on the Report Page."
         Case "Roster Page"
             FullErrorString = "There are no students parsed on the Roster Page"
         Case "Records Page"
@@ -189,7 +189,7 @@ NewWorkbook:
     FileName = CenterString & " " & SubDate & "." & SubTime & ".xlsm"
     
     'The address where the new book will be save in SharePoint
-    SpPath = "https://uwnetid.sharepoint.com/sites/partner_university_portal/Data%20Portal/Report%20Submissions/"
+    SpPath = "https://uwnetid.sharepoint.com/sites/partner_university_portal/Data%20Portal/Center%20Files%20Data%20and%20Reports/Report%20Submissions/"
     
     'Upload
     NewBook.SaveAs FileName:=SpPath & "/" & FileName, FileFormat:=xlOpenXMLWorkbookMacroEnabled

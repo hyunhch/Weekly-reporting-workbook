@@ -1,7 +1,7 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} LoadActivityForm 
    Caption         =   "Load Activity"
-   ClientHeight    =   5352
+   ClientHeight    =   5355
    ClientLeft      =   120
    ClientTop       =   465
    ClientWidth     =   8670.001
@@ -97,14 +97,11 @@ Private Sub LoadActivityConfirmButton_Click()
         End If
 NextActivity:
     Next i
-        
-    LoadActivityForm.Hide
    
+    LoadActivityCancelButton_Click
+        
 Footer:
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-
+    
 End Sub
 
 Private Sub LoadActivityDeleteAllButton_Click()
@@ -158,14 +155,10 @@ ClearReport:
     Next ActivitySheet
     
     'Hide the userform
-    LoadActivityForm.Hide
+    LoadActivityCancelButton_Click
     
 Footer:
-
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-
+    
 End Sub
 
 Private Sub LoadActivityDeleteButton_Click()
@@ -229,10 +222,8 @@ ListboxRemove:
     Call UserForm_Activate
     
 Footer:
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-
+    LoadActivityCancelButton_Click
+    
 End Sub
 
 Private Sub LoadActivityFilterTextBox_Change()

@@ -106,10 +106,10 @@ Function MakeNewBook(RecordsSheet As Worksheet, ReportSheet As Worksheet, Option
         Set ExportNameRange = RosterNameRange
     Else
         Set ExportNameRange = NameRange
-        
-        'Create the Report if no name range was passed
-        Call ExportReport(ReportSheet, NewBook)
     End If
+    
+    'Create the Report
+    Call ExportReport(ReportSheet, NewBook)
     
     'Nothing else to be done for SharePoint
     If BookType = "SharePoint" Then
