@@ -1,10 +1,11 @@
 Attribute VB_Name = "ReportButtonSubs"
 Option Explicit
 
-Sub ClearReportButton()
+Sub ReportClearButton()
 'Clears and resets the report sheet
 
     Dim ReportSheet As Worksheet
+    Dim ReportTable As ListObject
     
     Application.EnableEvents = False
     Application.ScreenUpdating = False
@@ -12,26 +13,25 @@ Sub ClearReportButton()
     
     Set ReportSheet = Worksheets("Report Page")
     
-    'Make sure there is a table. There always should be
-    If CheckTable(ReportSheet) = 4 Then
-        GoTo Footer
-    End If
-    
     'Clear
     Call UnprotectSheet(ReportSheet)
-    Call ClearReport
+    Call ReportClear
 
-    'Reprotect
-    Call ResetProtection
+    'Remake
+    Set ReportTable = MakeReportTable
     
+    Call TableFormatReport(ReportSheet, ReportTable)
+
 Footer:
+    Call ResetProtection
+
     Application.EnableEvents = True
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
     
 End Sub
 
-Sub OpenTabulateActivityButton()
+Sub ReportTabulateFormButton()
 'Checks that there is anything new to tabulate and open the TabulateActivityForm
 
     Dim ReportSheet As Worksheet

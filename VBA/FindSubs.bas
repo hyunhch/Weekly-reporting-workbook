@@ -24,15 +24,17 @@ Function FindActivityLabel(ActivitySheet As Worksheet) As Range
     'Search and return
     Set LabelCell = SearchRange.Find("Label", , xlValues, xlWhole).Offset(0, 1)
     
-    If Not LabelCell Is Nothing Then
-        Set FindActivityLabel = LabelCell
+    If LabelCell Is Nothing Or Not Len(LabelCell.Value) > 0 Then
+        GoTo Footer
     End If
+    
+    Set FindActivityLabel = LabelCell
     
 Footer:
 
 End Function
 
-Function FindBlanks(TargetSheet As Worksheet, SearchRange As Range) As Range
+Function FindBlanks(SearchRange As Range) As Range
 'Finds empty cells in a column of a larger range, returns as a range
 'Returns nothing if there are no blanks
 
@@ -41,7 +43,7 @@ Function FindBlanks(TargetSheet As Worksheet, SearchRange As Range) As Range
     
     'Build range of blanks
     For Each c In SearchRange.Cells
-        If c.Value = "" Then
+        If Not Len(c.Value) > 0 Then
             Set DelRange = BuildRange(c, DelRange)
         End If
     Next c
@@ -58,33 +60,51 @@ Footer:
 
 End Function
 
-Function FindChecks(TargetRange As Range, Optional SearchType As String) As Range
-'Returns a range that contains all cells that are not empty or 0
-'Passing "Absent" returns absent students
+Function FindChecks(SearchRange As Range, Optional SearchType As String) As Range
+'Returns a range that contains an "a", not used on RecordsSheet
+'Passing "Absent" returns the range of all blank boxes
+'Passing "First" returns only the first found "a"
+'Returns nothing on error
 
+    Dim SearchSheet As Worksheet
+    Dim NudgedRange As Range
     Dim CheckedRange As Range
     Dim c As Range
     
-    If SearchType <> "Absent" Then
-        GoTo OnlyPresent
+    If SearchRange Is Nothing Then
+        GoTo Footer
     End If
     
-    For Each c In TargetRange
-        If c.Value = "0" Then  'Only get absenses
-            Set CheckedRange = BuildRange(c, CheckedRange)
-        End If
+    Set SearchSheet = Worksheets(SearchRange.Worksheet.Name)
+    Set NudgedRange = NudgeToHeader(SearchSheet, SearchRange, "Select")
+    
+    For Each c In NudgedRange
+        Select Case SearchType
+        
+            Case "First"
+                If c.Value = "a" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                    
+                    GoTo ReturnRange
+                End If
+                
+            Case "Absent"
+                If c.Value <> "a" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+                
+            Case Else
+                If c.Value = "a" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+        End Select
     Next c
     
-    GoTo SetRange
-    
-OnlyPresent:
-    For Each c In TargetRange
-        If c.Value <> "" And c.Value <> "0" Then 'Ignore empty spaces and absenses on the Records sheet
-            Set CheckedRange = BuildRange(c, CheckedRange)
-        End If
-    Next c
-    
-SetRange:
+    If CheckedRange Is Nothing Then
+        GoTo Footer
+    End If
+
+ReturnRange:
     Set FindChecks = CheckedRange
     
 Footer:
@@ -92,6 +112,79 @@ Footer:
 End Function
 
 Function FindDuplicate(SourceRange As Range) As Range
+'Intermediate function that determines OS because MacOS doesn't support dictionaries
+'Returns the range of all duplicates in the range
+'Returns nothing if no duplicates are found
+
+    Dim SourceSheet As Worksheet
+    Dim SearchRange As Range
+    
+    'Nudge range to names
+    Set SourceSheet = Worksheets(SourceRange.Worksheet.Name)
+    
+    If Not SourceSheet.Name = "Records Page" Then 'Not on the RecordsSheet, there's no table
+        Set SearchRange = NudgeToHeader(SourceSheet, SourceRange, "First")
+    Else
+        Set SearchRange = SourceRange
+    End If
+
+    'Detect OS
+    If Application.OperatingSystem Like "*Mac*" Then
+        Set FindDuplicate = FindDuplicateMac(SearchRange)
+    Else
+        Set FindDuplicate = FindDuplicateWin(SearchRange)
+    End If
+
+Footer:
+
+End Function
+
+Function FindDuplicateMac(SourceRange As Range) As Range
+'Returns the range of all duplicates in the range
+'Returns nothing if no duplicates are found
+
+    Dim DuplicateRange As Range
+    Dim CompareRange As Range
+    Dim LCell As Range
+    Dim c As Range
+    Dim d As Range
+    Dim i As Long
+    Dim j As Long
+    Dim SourceString As String
+    Dim CompareString As String
+
+    'Return nothing if it's a single cell
+    If Not SourceRange.Cells.Count > 1 Then
+        GoTo Footer
+    End If
+
+    Set LCell = SourceRange.Rows(SourceRange.Rows.Count)
+    
+    'Loop through and build range of duplicates
+    i = 1
+    For Each c In SourceRange.Resize(SourceRange.Cells.Count - 1, 1).Cells 'Stop at the 2nd to last cell
+        Set CompareRange = Range(c.Offset(1, 0), LCell)
+        SourceString = c.Value & " " & c.Offset(0, 1).Value
+        
+        For Each d In CompareRange
+            CompareString = d.Value & " " & d.Offset(0, 1).Value
+            
+            If SourceString = CompareString Then
+                Set DuplicateRange = BuildRange(d, DuplicateRange)
+            End If
+        Next d
+    Next c
+
+    'Return
+    If Not DuplicateRange Is Nothing Then
+        Set FindDuplicateMac = DuplicateRange
+    End If
+
+Footer:
+
+End Function
+
+Function FindDuplicateWin(SourceRange As Range) As Range
 'Returns the range of all duplicates in the range
 'Returns nothing if no duplicates are found
 
@@ -119,14 +212,110 @@ NextName:
 
     'Return
     If Not DuplicateRange Is Nothing Then
-        Set FindDuplicate = DuplicateRange
+        Set FindDuplicateWin = DuplicateRange
     End If
 
 Footer:
 
 End Function
 
+Function FindLastRow(TargetSheet As Worksheet, Optional TargetHeader As String) As Range
+'Returns the a cell in the last used row
+'Returns the "Select" column by default, the specified column if a string is passed
+'Returns nothing on error
+
+    Dim c As Range
+    Dim d As Range
+    Dim HeaderString As String
+    Dim TargetTable As ListObject
+
+    Set TargetTable = TargetSheet.ListObjects(1)
+    
+    'If a header was passed
+    If Len(TargetHeader) > 0 Then
+        HeaderString = TargetHeader
+    Else
+        HeaderString = "Select"
+    End If
+    
+    Set c = TargetTable.ListColumns(HeaderString).Range
+    Set d = TargetSheet.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+    
+    If c Is Nothing Then
+        GoTo Footer
+    ElseIf d Is Nothing Then
+        GoTo Footer
+    End If
+    
+    Set FindLastRow = TargetSheet.Cells(d.Row, c.Column)
+
+Footer:
+    
+End Function
+
 Function FindName(SourceRange As Range, TargetRange As Range) As Range
+'Intermediate function that determines OS because MacOS doesn't support dictionaries
+'Returns a range of all matching names in the TargetRange
+'Returns nothing if no matches found
+
+    Dim SourceSheet As Worksheet
+    Dim SearchRange As Range
+    
+    'Nudge range to names
+    Set SourceSheet = Worksheets(SourceRange.Worksheet.Name)
+    
+    If Not SourceSheet.Name = "Records Page" Then 'Not on the RecordsSheet, there's no table
+        Set SearchRange = NudgeToHeader(SourceSheet, SourceRange, "First")
+    Else
+        Set SearchRange = SourceRange
+    End If
+
+    'Detect OS
+    If Application.OperatingSystem Like "*Mac*" Then
+        Set FindName = FindNameMac(SearchRange, TargetRange)
+    Else
+        Set FindName = FindNameWin(SearchRange, TargetRange)
+    End If
+
+Footer:
+
+End Function
+
+Function FindNameMac(SourceRange As Range, TargetRange As Range) As Range
+'Returns a range of all matching names in the TargetRange
+'Returns nothing if no matches found
+'MacOS doesn't support dictionaries
+
+    Dim MatchRange As Range
+    Dim c As Range
+    Dim d As Range
+    Dim SourceName As String
+    Dim TargetName As String
+    
+    'Loop through the SourceRange, only looking for a single match
+    For Each c In SourceRange
+        SourceName = c.Value & " " & c.Offset(0, 1).Value
+        
+        For Each d In TargetRange
+            TargetName = d.Value & " " & d.Offset(0, 1).Value
+        
+            If SourceName = TargetName Then
+                Set MatchRange = BuildRange(d, MatchRange)
+                
+                GoTo NextName
+            End If
+        Next d
+NextName:
+    Next c
+
+    'Return
+    Set FindNameMac = MatchRange
+
+Footer:
+
+End Function
+
+Function FindNameWin(SourceRange As Range, TargetRange As Range) As Range
 'Returns a range of all matching names in the TargetRange
 'Returns nothing if no matches found
 
@@ -172,101 +361,56 @@ NextName2:
     
 ReturnRange:
     If Not MatchRange Is Nothing Then
-        Set FindName = MatchRange
+        Set FindNameWin = MatchRange
     End If
 Footer:
 
 End Function
 
-Function FindPresent(RecordsSheet As Worksheet, LabelCell As Range, Optional OperationString As String) As Range
-'Returns the range of all present students given the passed cell
-'Returns nothing if there are no students recorded as present, or if the activity isn't found
-'Returns absent students if "Absent" is passed
-'Returns both absent and present if "All" is passed
-
-    Dim RecordsNameRange As Range
-    Dim RecordsAttendanceRange As Range
-    Dim c As Range
-    Dim d As Range
-    Dim e As Range
-    Dim IsPresent As Boolean
-    Dim IsAbsent As Boolean
-    
-    'Make sure there are both students and activities
-    If CheckRecords(RecordsSheet) <> 1 Then
-        GoTo Footer
-    End If
-    
-    'Find the vertical range containing attendance information
-    Set RecordsAttendanceRange = FindRecordsAttendance(RecordsSheet, , LabelCell)
-    
-    If RecordsAttendanceRange Is Nothing Then
-        GoTo Footer
-    End If
-
-    'Check that there are students to return
-    IsPresent = IsChecked(RecordsAttendanceRange)
-    IsAbsent = IsChecked(RecordsAttendanceRange, "Absent")
-    
-    'No student attendance
-    If IsPresent = False And IsAbsent = False Then 'This checks the contents of the range, not if the range exists
-        GoTo Footer
-    'No absent students
-    ElseIf OperationString = "Absent" And IsAbsent = False Then
-        GoTo Footer
-    'No present students
-    ElseIf Len(OperationString) < 1 And IsPresent = False Then
-        GoTo Footer
-    End If
-    
-    'Define the range of names and grab all that were present/absent
-    Set RecordsNameRange = FindRecordsName(RecordsSheet) 'Should always be in the A column, but making it programmatic
-    Set c = FindChecks(RecordsAttendanceRange)
-    Set d = FindChecks(RecordsAttendanceRange, "Absent")
-    
-    'Return
-    If Len(OperationString) < 1 Then
-        Set FindPresent = c.Offset(0, -RecordsAttendanceRange.Column + RecordsNameRange.Column)
-    ElseIf OperationString = "Absent" Then
-        Set FindPresent = d.Offset(0, -RecordsAttendanceRange.Column + RecordsNameRange.Column)
-    ElseIf OperationString = "All" Then
-        Set e = Union(c, d)
-        Set FindPresent = e.Offset(0, -RecordsAttendanceRange.Column + RecordsNameRange.Column)
-    End If
-    
-Footer:
-
-End Function
-
-Function FindRecordsActivityHeaders(RecordsSheet As Worksheet, Optional LabelCell As Range) As Range
+Function FindRecordsActivityHeaders(RecordsSheet As Worksheet, Optional LabelCell As Range, Optional OperationString As String) As Range
 'Finds the vertical headers for activities on the Records Page
 'If LabelCell is passed, returns the headers for that activity
+'If "All" is passed, return the headers for ALL activities
 
     Dim VCell As Range
-    Dim HCell As Range
+    Dim HeaderRange As Range
+    Dim LabelRange As Range
     Dim c As Range
     Dim d As Range
+    Dim i As Long
     
-    'Find the padding cells
+    i = CheckRecords(RecordsSheet)
+    
+    'Find the padding cell
     Set VCell = RecordsSheet.Range("1:1").Find("V BREAK", , xlValues, xlWhole)
-    Set HCell = RecordsSheet.Range("A:A").Find("H BREAK", , xlValues, xlWhole)
+        If VCell Is Nothing Then
+            GoTo Footer
+        End If
     
-    'Headers are one cell left of the VCell, two cells up from the HCell
-    Set c = VCell.Offset(0, -1).Resize(HCell.Row - 2, 1)
-    
-    'If a label was passed
-    If Not LabelCell Is Nothing Then
-        Set d = FindRecordsLabel(RecordsSheet, LabelCell)
+    'Column of headers is one column to the left of VCELL
+    Set c = VCell.Offset(0, -1)
+    Set d = c.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
         If d Is Nothing Then
             GoTo Footer
         End If
-        
-        Set FindRecordsActivityHeaders = d.Resize(c.Rows.Count, 1)
-    'If nothing was passed
-    Else
-        Set FindRecordsActivityHeaders = c
-    End If
+
+    Set HeaderRange = RecordsSheet.Range(c, d)
     
+    'Either grab the entire range of headers or one specific one
+    Set LabelRange = FindRecordsLabel(RecordsSheet, LabelCell)
+        If LabelRange Is Nothing Then
+            GoTo Footer
+        End If
+    
+    'Return
+    If OperationString = "All" Then
+        Set FindRecordsActivityHeaders = LabelRange.Resize(HeaderRange.Rows.Count, LabelRange.Columns.Count)
+    ElseIf LabelCell Is Nothing Then
+        Set FindRecordsActivityHeaders = HeaderRange
+    Else
+        Set FindRecordsActivityHeaders = LabelRange.Resize(HeaderRange.Rows.Count, 1)
+    End If
+
 Footer:
 
 End Function
@@ -328,15 +472,16 @@ Footer:
 
 End Function
 
-Function FindRecordsLabel(RecordsSheet As Worksheet, Optional LabelCell As Range) As Range
+Function FindRecordsLabel(RecordsSheet As Worksheet, Optional LabelCell As Range, Optional LabelString As String) As Range
 'Returns the range of all activity labels
 'If there are no activities, returns the "V BREAK" padding cell
-'Returns the cell containing the label if LabelCell is passed
+'Returns the cell containing the label if LabelCell or LabelString is passed
 'Returns nothing if LabelCell is passed and a match not found
 
     Dim FCell As Range
     Dim LCell As Range
     Dim LabelRange As Range
+    Dim SearchString As String
     
     'Define the range of labels
     Set FCell = RecordsSheet.Range("1:1").Find("V BREAK", , xlValues, xlWhole)
@@ -349,10 +494,17 @@ Function FindRecordsLabel(RecordsSheet As Worksheet, Optional LabelCell As Range
     End If
     
     Set LabelRange = RecordsSheet.Range(FCell.Offset(0, 1), LCell)
-    
-    'If a name is passed
+
+    'If a label is passed
     If Not LabelCell Is Nothing Then
-        Set FCell = LabelRange.Find(LabelCell.Value, , xlValues, xlWhole)
+        SearchString = LabelCell.Value
+    ElseIf Len(LabelString) > 0 Then
+        SearchString = LabelString
+    End If
+    
+    If Len(SearchString) > 0 Then
+        Set FCell = LabelRange.Find(SearchString, , xlValues, xlWhole)
+        
         If Not FCell Is Nothing Then
             Set FindRecordsLabel = FCell
             GoTo Footer
@@ -361,7 +513,7 @@ Function FindRecordsLabel(RecordsSheet As Worksheet, Optional LabelCell As Range
             GoTo Footer
         End If
     End If
-    
+
     'Entire range
     Set FindRecordsLabel = LabelRange
 
@@ -395,6 +547,7 @@ Function FindRecordsName(RecordsSheet As Worksheet, Optional NameCell As Range)
     'If a name is passed
     If Not NameCell Is Nothing Then
         Set MatchCell = FindName(NameCell, NameRange)
+        
         If Not MatchCell Is Nothing Then
             Set FindRecordsName = MatchCell
             GoTo Footer
@@ -411,47 +564,181 @@ Footer:
 
 End Function
 
-Function FindReportLabel(ReportSheet As Worksheet, Optional LabelCell As Range) As Range
+Function FindRecordsRange(RecordsSheet As Worksheet, Optional OperationString As String) As Range
+'Returns the used range on the Records sheet, i.e. "A1" to the bottom most row and right most column
+'Passing "Names" returns the range of names out to the right most column
+'Passing "Labels" returns the range of labels to the bottom most row
+'Only returns columns for first and last names if no activities
+'Only returns activity headers if no students
+'Returns nothing on error or missing both activities and students
+
+    Dim FCell As Range
+    Dim LCell As Range
+    Dim c As Range
+    Dim LRow As Long
+    Dim LCol As Long
+    Dim i As Long
+    Dim ReturnRange As Range
+    
+    Dim RecordsNameRange As Range
+    Dim RecordsLabelRange As Range
+    
+    'Make sure there are students and activities
+    i = CheckRecords(RecordsSheet)
+        If i = 4 Then
+            GoTo Footer
+        End If
+        
+    'Define some ranges that we may or may not use
+    Set RecordsNameRange = FindRecordsName(RecordsSheet)
+    Set RecordsLabelRange = FindRecordsActivityHeaders(RecordsSheet, , "All")
+   
+    'Where to stop
+    LRow = RecordsSheet.Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    LCol = RecordsSheet.Range("1:1").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Column
+    
+    'Where to start
+    Select Case i
+        
+        Case 1
+            If OperationString = "Names" Then
+                Set FCell = RecordsNameRange
+                Set LCell = RecordsNameRange.Offset(0, LCol - 1)
+                
+            ElseIf OperationString = "Labels" Then
+                Set FCell = RecordsLabelRange
+                Set c = FCell.Resize(1, FCell.Columns.Count) 'Reduce to one row
+                Set LCell = c.Offset(LRow - 1, 0)
+                
+            ElseIf Not Len(OperationString) > 0 Then
+                Set FCell = RecordsSheet.Range("A1")
+                Set LCell = RecordsSheet.Cells(LRow, LCol)
+                
+            Else
+                Debug.Print "Invalid OperationString"
+                GoTo Footer
+                
+            End If
+            
+        Case 2 'No students
+            If OperationString = "Names" Then
+                GoTo Footer
+                                
+            ElseIf OperationString = "Labels" Then
+                Set FCell = RecordsLabelRange
+                
+            ElseIf Not Len(OperationString) > 0 Then
+                Set FCell = RecordsLabelRange
+                
+            Else
+                Debug.Print "Invalid OperationString"
+                GoTo Footer
+                
+            End If
+            
+        Case 3 'No activities
+            If OperationString = "Names" Then
+                Set FCell = RecordsNameRange
+                Set LCell = RecordsNameRange.Offset(0, 1)
+                                
+            ElseIf OperationString = "Labels" Then
+                GoTo Footer
+                
+            ElseIf Not Len(OperationString) > 0 Then
+                Set FCell = RecordsNameRange
+                Set LCell = RecordsNameRange.Offset(0, 1)
+                
+            Else
+                Debug.Print "Invalid OperationString"
+                GoTo Footer
+                
+            End If
+    
+    End Select
+                
+    'Return
+    If LCell Is Nothing Then
+        Set LCell = FCell
+    End If
+    
+    Set ReturnRange = RecordsSheet.Range(FCell, LCell)
+    
+    If Not ReturnRange Is Nothing Then
+        Set FindRecordsRange = ReturnRange
+    End If
+                
+Footer:
+
+End Function
+
+Sub rangetest()
+
+    Dim RecordsSheet As Worksheet
+    Dim rng As Range
+    Dim str As String
+    
+    Set RecordsSheet = Worksheets("Records Page")
+    'str = "Names"
+    'str = "Labels"
+    
+    Set rng = FindRecordsRange(RecordsSheet, str)
+    
+    If Not rng Is Nothing Then
+        Debug.Print rng.Address
+    Else
+        Debug.Print "Fail"
+    End If
+
+End Sub
+
+Function FindReportLabel(ReportSheet As Worksheet, Optional LabelString As String) As Range
 'Returns the cell containing the passed label
 'Returns the "Total" row if there are no activities
 'Returns the range of all labels if a string isn't passed
 'Returns nothing if LabelCell is passed and a match not found
 
-    Dim LabelColumn As Range
+    Dim LabelRange As Range
     Dim MatchCell As Range
+    Dim i As Long
     Dim ReportTable As ListObject
 
     'Make sure there is a table on the page
-    If Not ReportSheet.ListObjects.Count > 0 Then
-        Call CreateReportTable
+    i = CheckReport(ReportSheet)
+    
+    If i > 3 Then
+        Call MakeReportTable
     End If
     
-    'If there are no activities, there will only be the Totals row
     Set ReportTable = ReportSheet.ListObjects(1)
     
-    If ReportTable.ListRows.Count = 1 Then
-        Set FindReportLabel = ReportTable.ListColumns("Label").DataBodyRange 'In case the placement of the Total row changes in the future
+    'If there is only the Totals row, return that
+    If i > 2 Then
+        Set MatchCell = ReportTable.ListColumns("Label").DataBodyRange(1, 1) 'Should only be one cell
+        
+        If MatchCell.Cells.Count > 1 Then
+            GoTo Footer
+        End If
+        
+        Set FindReportLabel = MatchCell
         GoTo Footer
     End If
 
-    'If no string is passed
-    If LabelCell Is Nothing Then
-        Set MatchCell = ReportTable.ListColumns("Label").DataBodyRange 'This will always be at least 1
-        Set FindReportLabel = MatchCell.Offset(1, 0).Resize(MatchCell.Rows.Count - 1, 1)
+    'If no string is passed, return the entire DataBodyRange, except the first row
+    If Not Len(LabelString) > 0 Then
+        Set LabelRange = ReportTable.ListColumns("Label").DataBodyRange
+        Set FindReportLabel = LabelRange.Offset(1, 0).Resize(LabelRange.Rows.Count - 1, 1)
+        
         GoTo Footer
     End If
-    
-    'If a string is passed
-    Set LabelColumn = ReportTable.ListColumns("Label").DataBodyRange
-    Set MatchCell = LabelColumn.Find(LabelCell.Value, , xlValues, xlWhole)
 
-    'If it's not found, return nothing
-    If MatchCell Is Nothing Then
-        GoTo Footer
-    End If
+    'If a string is passed, find return. Return nothing if not found
+    Set LabelRange = ReportTable.ListColumns("Label").DataBodyRange.Find(LabelString, , xlValues, xlWhole)
+        If LabelRange Is Nothing Then
+            GoTo Footer
+        End If
     
     'If found
-    Set FindReportLabel = MatchCell
+    Set FindReportLabel = LabelRange
 
 Footer:
 
@@ -461,16 +748,86 @@ Function FindSheet(SearchString As String, Optional SearchBook As Workbook) As W
 'Returns the activity sheet with the passed label
 'Will search in the passed workbook
 
+    Dim TargetBook As Workbook
     Dim TargetSheet As Worksheet
     
+    'If a book isn't passed, use this one
+    If SearchBook Is Nothing Then
+        Set TargetBook = ThisWorkbook
+    Else
+        Set TargetBook = SearchBook
+    End If
+    
 ActivitySheet:
-    For Each TargetSheet In ThisWorkbook.Sheets
+    For Each TargetSheet In TargetBook.Sheets
         If TargetSheet.Range("A1").Value = "Practice" And _
         Not TargetSheet.Range("1:1").Find(SearchString, , xlValues, xlWhole) Is Nothing Then
             Set FindSheet = TargetSheet
+            
             GoTo Footer
         End If
     Next TargetSheet
+
+Footer:
+
+End Function
+
+Function FindStudentAttendance(RecordsSheet As Worksheet, AttendanceRange As Range, Optional SearchType As String) As Range
+'Searches horizontally for the attendance of a student or students, or vertically for an activity or activities
+'Returns all the cells on the records sheet within the passed range that contain a "1"
+'Returns cells that contain "0" if "Absent" is passed
+'Returns cell that contain "1" or "0" if "Both" is passed
+'Returns cell that are blank if "Blank" is passed
+'Returns the first "1" if "First" is passed
+'Returns nothing on error
+
+    Dim CheckedRange As Range
+    Dim c As Range
+    
+    If AttendanceRange Is Nothing Then
+        GoTo Footer
+    End If
+    
+    
+    For Each c In AttendanceRange
+        Select Case SearchType
+        
+            Case "First"
+                If c.Value = "1" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                    
+                    GoTo ReturnRange
+                End If
+        
+            Case "Blank"
+                If Not Len(c.Value) > 0 Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+                
+            Case "Absent"
+                If c.Value = "0" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+                
+            Case "Both"
+                If c.Value = "0" Or c.Value = "1" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+                
+            Case Else
+                If c.Value = "1" Then
+                    Set CheckedRange = BuildRange(c, CheckedRange)
+                End If
+            
+        End Select
+    Next c
+    
+    If CheckedRange Is Nothing Then
+        GoTo Footer
+    End If
+    
+ReturnRange:
+    Set FindStudentAttendance = CheckedRange
 
 Footer:
 
@@ -492,10 +849,9 @@ Function FindTableHeader(TargetSheet As Worksheet, StartString As String, Option
 
     Set TargetTable = TargetSheet.ListObjects(1)
     Set StartCell = TargetTable.HeaderRowRange.Find(StartString, , xlValues, xlWhole)
-
-    If StartCell Is Nothing Then
-        GoTo Footer
-    End If
+        If StartCell Is Nothing Then
+            GoTo Footer
+        End If
 
     If Not Len(EndString) > 0 Then
         'Return one cell
@@ -523,13 +879,52 @@ Function FindTableRange(TargetSheet As Worksheet) As Range
     
     'All tables used will have a cell with "Select" in the 1st column
     Set FCell = TargetSheet.Range("A:A").Find("Select", , xlValues, xlWhole)
-    LCol = FCell.EntireRow.Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
+        If FCell Is Nothing Then
+            GoTo Footer
+        End If
     
+    LCol = FCell.EntireRow.Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
     'Which column to search can change so search all cells
     LRow = TargetSheet.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    
     Set LCell = TargetSheet.Cells(LRow, LCol)
     Set FindTableRange = TargetSheet.Range(FCell, LCell)
 
+Footer:
+
+End Function
+
+Function FindTableRow(TargetSheet As Worksheet, TargetCell As Range) As Range
+'Takes one or more cells in a row and returns the entire table row
+'Returns nothing on error
+'Can only take a single row in passed range
+
+    Dim TargetTableRange As Range
+    Dim c As Range
+    Dim TargetTable As ListObject
+    
+    If Not TargetSheet.ListObjects.Count > 0 Then
+        GoTo Footer
+    End If
+    
+    Set TargetTable = TargetSheet.ListObjects(1)
+    Set TargetTableRange = TargetTable.DataBodyRange
+    Set c = Intersect(TargetCell, TargetTableRange)
+
+    'Check that the passed range only has one row, and that it's contained within the table
+    If TargetCell.Rows.Count > 1 Then
+        GoTo Footer
+    ElseIf c Is Nothing Then
+        GoTo Footer
+    ElseIf Not c.Address = TargetCell.Address Then
+        GoTo Footer
+    End If
+    
+    'Find the intersect
+    Set c = Intersect(TargetCell.EntireRow, TargetTableRange)
+        
+    Set FindTableRow = c
+    
 Footer:
 
 End Function
@@ -545,34 +940,25 @@ Function FindTabulateRange(RosterSheet As Worksheet, RecordsSheet As Worksheet, 
     Dim c As Range
      
     'Find the activity and identify students who were present
-    Set PresentRange = FindPresent(RecordsSheet, LabelCell)
+    Set AttendanceRange = FindRecordsAttendance(RecordsSheet, , LabelCell)
+        If AttendanceRange Is Nothing Then
+            GoTo Footer
+        End If
     
-    'Handled by a function now
-    'Set AttendanceRange = FindRecordsAttendance(RecordsSheet, , LabelCell)
-    
-    'For Each c In AttendanceRange
-        'If c.Value = "1" Then
-            'Set PresentRange = BuildRange(c.Offset(0, -c.Column + 1), PresentRange)
-            'If Not PresentRange Is Nothing Then
-                'Set PresentRange = Union(PresentRange, RecordsSheet.Cells(c.Row, 1))
-            'Else
-                'Set PresentRange = RecordsSheet.Cells(c.Row, 1)
-            'End If
-        'End If
-    'Next c
-    
-    'If nothing was found on the Records sheet
-    If PresentRange Is Nothing Then
-        GoTo Footer
-    End If
-    
+    Set c = FindStudentAttendance(RecordsSheet, AttendanceRange)
+        If c Is Nothing Then
+            GoTo Footer
+        End If
+        
+    'Scoot the range over to grab the names
+    Set PresentRange = c.Offset(0, -c.Column + 1)
+        
     'Match the students to the Roster sheet
     Set RosterNameRange = RosterSheet.ListObjects(1).ListColumns("First").DataBodyRange
     Set TabulateRange = FindName(PresentRange, RosterNameRange)
-    
-    If TabulateRange Is Nothing Then 'This shouldn't happen
-        GoTo Footer
-    End If
+        If TabulateRange Is Nothing Then 'This shouldn't happen
+            GoTo Footer
+        End If
     
     Set FindTabulateRange = TabulateRange
     
@@ -581,6 +967,68 @@ Footer:
 End Function
 
 Function FindUnique(SourceRange As Range, TargetRange As Range) As Range
+'Intermediate function that determines OS because MacOS doesn't support dictionaries
+'Returns a range of all names in the source range but not the target range
+'Returns nothing if no matches found
+    
+    Dim SourceSheet As Worksheet
+    Dim SearchRange As Range
+    
+    'Nudge range to names
+    Set SourceSheet = Worksheets(SourceRange.Worksheet.Name)
+    
+    If Not SourceSheet.Name = "Records Page" Then 'Not on the RecordsSheet, there's no table
+        Set SearchRange = NudgeToHeader(SourceSheet, SourceRange, "First")
+    Else
+        Set SearchRange = SourceRange
+    End If
+    
+    If Application.OperatingSystem Like "*Mac*" Then
+        Set FindUnique = FindUniqueMac(SearchRange, TargetRange)
+    Else
+        Set FindUnique = FindUniqueWin(SearchRange, TargetRange)
+    End If
+
+Footer:
+
+End Function
+
+Function FindUniqueMac(SourceRange As Range, TargetRange As Range) As Range
+'Returns a range of all non-matching names. Names in the source range but not the target range
+'MacOS doesn't support dictionaries
+'Returns nothing if no matches found
+
+    Dim UniqueRange As Range
+    Dim c As Range
+    Dim d As Range
+    Dim SourceName As String
+    Dim TargetName As String
+    
+    'Loop through the SourceRange, only looking for a single match
+    For Each c In SourceRange
+        SourceName = c.Value & " " & c.Offset(0, 1).Value
+        
+        For Each d In TargetRange
+            TargetName = d.Value & " " & d.Offset(0, 1).Value
+        
+            If SourceName = TargetName Then
+                GoTo NextName
+            End If
+        Next d
+        
+        'Unique name
+        Set UniqueRange = BuildRange(c, UniqueRange)
+NextName:
+    Next c
+
+    'Return
+    Set FindUniqueMac = UniqueRange
+                
+Footer:
+
+End Function
+
+Function FindUniqueWin(SourceRange As Range, TargetRange As Range) As Range
 'Returns a range of all non-matching names. Names in the source range but not the target range
 'Returns nothing if no matches found
 
@@ -620,7 +1068,7 @@ NextSourceName:
     
     'Return
     If Not NoMatchRange Is Nothing Then
-        Set FindUnique = NoMatchRange
+        Set FindUniqueWin = NoMatchRange
     End If
 Footer:
 

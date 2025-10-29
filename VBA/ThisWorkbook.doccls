@@ -9,16 +9,16 @@ Private Sub Workbook_Open()
 
 'Choose which program when the workbook first opens.
 
-    Dim sh As Worksheet
+    'Dim sh As Worksheet
     
     'Check if one of the reference sheets has been renamed
-    For Each sh In ThisWorkbook.Worksheets
-        If sh.Name = "Ref Tables" Then
-            GoTo Footer
-        End If
-    Next sh
+    'For Each sh In ThisWorkbook.Worksheets
+        'If sh.Name = "Ref Tables" Then
+            'GoTo Footer
+        'End If
+    'Next sh
 
-    ChooseProgramForm.Show
+    'ChooseProgramForm.Show
 
 Footer:
 

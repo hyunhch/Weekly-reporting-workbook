@@ -7,6 +7,10 @@ Function IsChecked(TargetRange As Range, Optional SearchType As String) As Boole
 'If "All" is passed, looks for absent and present students
 
     IsChecked = False
+
+    If TargetRange Is Nothing Then
+        GoTo Footer
+    End If
     
     If SearchType = "Absent" Then
         GoTo AbsentSearch

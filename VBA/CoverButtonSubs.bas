@@ -1,6 +1,15 @@
 Attribute VB_Name = "CoverButtonSubs"
 Option Explicit
 
+Sub CoverChooseProgramButton()
+'Brings up the userform to choose a program. Button is deleted afterward
+
+    ChooseProgramForm.Show
+
+Footer:
+
+End Sub
+
 Sub CoverSaveCopyButton()
 'Saves a local copy of attendance records, the roster, report, and cover sheet
 'More detailed than what goes to SharePoint
@@ -52,8 +61,8 @@ IncompleteMessage:
     Select Case ErrorString
         Case "Cover Page"
             FullErrorString = "Please completely fill out the Cover Page and retabulate your activities."
-        'Case "Report Page"
-            'FullErrorString = "There are no activities tabulated on the Report Page."
+        Case "Report Page"
+            FullErrorString = "There are no activities tabulated on the Report Page."
         Case "Roster Page"
             FullErrorString = "There are no students parsed on the Roster Page"
         Case "Records Page"
@@ -65,8 +74,20 @@ IncompleteMessage:
     
 NewWorkbook:
     'Make a new workbook
+    ReDim TempArray(1 To 5)
+        TempArray(1) = "Cover Page"
+        TempArray(2) = "Report Page"
+        TempArray(3) = "Roster Page"
+        TempArray(4) = "Simple Attendance"
+        TempArray(5) = "Detailed Attendance"
+
     Set OldBook = ThisWorkbook
-    Set NewBook = MakeNewBook(RecordsSheet, ReportSheet, RosterSheet)
+    Set NewBook = ExportMakeBook(, TempArray)
+        If NewBook Is Nothing Then
+            MsgBox ("The submission could not be completed. Close and reopen this workbook and try again.")
+            
+            GoTo Footer
+        End If
     
     'Pull in center from the CoverSheet, date, and time
     CenterString = CoverSheet.Range("A:A").Find("Center", , xlValues, xlWhole).Offset(0, 1).Value
@@ -84,7 +105,7 @@ NewWorkbook:
     If Application.OperatingSystem Like "*Mac*" Then
         SaveName = Application.GetSaveAsFilename(LocalPath & "\" & FileName, "Excel Files (*.xlsm), *.xlsm")
         If SaveName = "False" Then
-            NewBook.Close SaveChanges:=False
+            NewBook.Close savechanges:=False
             GoTo Footer
         End If
         NewBook.SaveAs FileName:=LocalPath & "/" & FileName, FileFormat:=xlOpenXMLWorkbookMacroEnabled
@@ -92,7 +113,7 @@ NewWorkbook:
     Else
         SaveName = Application.GetSaveAsFilename(LocalPath & "\" & FileName, "Excel Files (*.xlsm), *.xlsm")
         If SaveName = "False" Then
-            NewBook.Close SaveChanges:=False
+            NewBook.Close savechanges:=False
             GoTo Footer
         End If
         NewBook.SaveAs FileName:=SaveName, FileFormat:=xlOpenXMLWorkbookMacroEnabled
@@ -177,8 +198,17 @@ IncompleteMessage:
     
 NewWorkbook:
     'Make a new workbook
+    ReDim TempArray(1 To 2)
+        TempArray(1) = "Cover Page"
+        TempArray(2) = "Report Page"
+    
     Set OldBook = ThisWorkbook
-    Set NewBook = MakeNewBook(RecordsSheet, ReportSheet, RosterSheet, , "SharePoint")
+    Set NewBook = ExportMakeBook(, TempArray)
+        If NewBook Is Nothing Then
+            MsgBox ("The submission could not be completed. Close and reopen this workbook and try again.")
+            
+            GoTo Footer
+        End If
     
     'Pull in center from the CoverSheet, date, and time
     CenterString = CoverSheet.Range("A:A").Find("Center", , xlValues, xlWhole).Offset(0, 1).Value
@@ -193,7 +223,7 @@ NewWorkbook:
     
     'Upload
     NewBook.SaveAs FileName:=SpPath & "/" & FileName, FileFormat:=xlOpenXMLWorkbookMacroEnabled
-    NewBook.Close SaveChanges:=False
+    NewBook.Close savechanges:=False
     
     MsgBox ("Submitted to SharePoint")
     
@@ -208,6 +238,7 @@ End Sub
 
 Sub CoverImportButton()
 'Pull in roster and attendence from a previous version of the workbook
+'*****Need to add measures for changes in the headers or practice/category spelling*****
 
     Dim OldBook As Workbook
     Dim NewBook As Workbook
@@ -221,26 +252,38 @@ Sub CoverImportButton()
     Dim d As Range
     Dim OldVersion As String
     Dim NewVersion As String
+    Dim OldTable As ListObject
+    Dim NewTable As ListObject
     Dim OldBookFilePath As Variant
+    Dim IsImported As Boolean
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     Application.EnableEvents = False
     
-    Set NewBook = ActiveWorkbook
+    IsImported = False
+    
+    Set NewBook = ThisWorkbook
     
     'Promp to select the workbook to import
     OldBookFilePath = Application.GetOpenFilename("Excel Files (*.xlsm*), *xlsm*", , "Select the file to import") 'Returns FALSE if nothing is selected
+        If OldBookFilePath = False Then
+            GoTo Footer
+        End If
     
-    If OldBookFilePath = False Then
-        GoTo Footer
-    End If
+    'Cear out everything in the new workbook before we open the old one
+    Set NewRosterSheet = NewBook.Worksheets("Roster Page")
+    Set NewRecordsSheet = NewBook.Worksheets("Records Page")
     
-    Workbooks.Open (OldBookFilePath)
+    Call RosterClear(NewRosterSheet) 'avoids prompt, clears the Records and Report as well
+    'Clear the RecordsSheet before copying over information. This is to preserve the order of students
+    
+    'Open the old book
+    Set OldBook = Workbooks.Open(OldBookFilePath)
     On Error Resume Next
 
     'Make sure it's a valid workbook
-    Set OldBook = ActiveWorkbook
+    'Set OldBook = ActiveWorkbook
 
     If IsError(CheckRecords(OldBook.Worksheets("Records Page"))) Then
         MsgBox ("It looks like you have selected an incompatible workbook. Please try again.")
@@ -276,21 +319,21 @@ Sub CoverImportButton()
         GoTo CloseBook
     End If
 
-    'Get rid of anything currently on the Roster Sheet
     Set OldRosterSheet = OldBook.Worksheets("Roster Page")
-    Set NewRosterSheet = NewBook.Worksheets("Roster Page")
-    
-    If CheckTable(NewRosterSheet) > 2 Then
-        NewRosterSheet.ListObjects(1).DataBodyRange.ClearContents
-    End If
+    Set OldRecordsSheet = OldBook.Worksheets("Records Page")
 
     'Copy over the roster and parse it
-    Set CopyRange = FindTableRange(OldRosterSheet)
-    
-    If CopyRange Is Nothing Then 'If there is nothing on the roster sheet. This shouldn't happen
+    If Not CheckTable(OldRosterSheet) < 3 Then
         MsgBox ("There are no students on the selected file's Roster Page")
+        
         GoTo CloseBook
     End If
+    
+    Set CopyRange = FindTableRange(OldRosterSheet)
+        'If CopyRange Is Nothing Then 'If there is nothing on the roster sheet. This shouldn't happen
+            'MsgBox ("There are no students on the selected file's Roster Page")
+            'GoTo CloseBook
+        'End If
 
     'Reset error handling
     On Error GoTo 0
@@ -298,29 +341,37 @@ Sub CoverImportButton()
     Set PasteRange = NewRosterSheet.Range(CopyRange.Address)
     
     PasteRange.Value = CopyRange.Value
-    NewBook.Activate
-    Call RosterParseButton
     
-    'Clear the RecordsSheet before copying over information. This is to preserve the order of students
-    Set OldRecordsSheet = OldBook.Worksheets("Records Page")
-    Set NewRecordsSheet = NewBook.Worksheets("Records Page")
-    
-    Call ClearSheet(NewRecordsSheet)
-
-    Set c = OldRecordsSheet.Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
-    Set d = OldRecordsSheet.Range("1:1").Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious)
-    Set CopyRange = OldRecordsSheet.Range(c, d)
+    'Copy over the records
+    Set CopyRange = FindRecordsRange(OldRecordsSheet)
     Set PasteRange = NewRecordsSheet.Range(CopyRange.Address)
 
     PasteRange.Value = CopyRange.Value
-
-    'Tabulate
-    Call ReportTabulateAllButton
-    MsgBox ("Import complete")
-
+    
+    IsImported = True
 
 CloseBook:
-    OldBook.Close SaveChanges:=False
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.EnableEvents = False
+
+    Set OldRosterSheet = Nothing
+    Set OldRecordsSheet = Nothing
+    Set OldTable = Nothing
+    Set CopyRange = Nothing
+
+    OldBook.Saved = True
+    OldBook.Close savechanges:=False
+    
+    If IsImported <> True Then
+        GoTo Footer
+    End If
+
+    'Parse the roster and retabulate activities
+    Call RosterParseButton 'This might cause problems if the old book is borked
+    Call ReportTabulateAllButton
+    
+    MsgBox ("Import complete")
 
 Footer:
 

@@ -1,8 +1,8 @@
 Attribute VB_Name = "ActivityButtonSubs"
 Option Explicit
 
-Sub SaveActivityButton()
-'To call the SaveActivity() suc
+Sub ActivitySaveButton()
+'To call the ActivitySave() suc
 
     Dim ActivitySheet As Worksheet
     Dim RecordsSheet As Worksheet
@@ -44,7 +44,7 @@ Sub SaveActivityButton()
     Call TabulateReportTotals
 
     'Pass to save
-    Call SaveActivity(ActivitySheet, RecordsSheet, LabelCell, "Yes")
+    Call ActivitySave(ActivitySheet, RecordsSheet, LabelCell, "Yes")
 
 Footer:
     Application.EnableEvents = True
@@ -53,7 +53,7 @@ Footer:
 
 End Sub
 
-Sub CloseActivityButton()
+Sub ActivityCloseButton()
 'Deletes the sheet, but keeps record of the activity
 'Only prompts to save if there is a difference between the sheet and the Records Sheet
 
@@ -128,7 +128,7 @@ SavePrompt:
             "Would you like to save this activity before closing the sheet?", vbQuestion + vbYesNo + vbDefaultButton2)
             
         If SaveCheck = vbYes Then
-            Call SaveActivityButton
+            Call ActivitySaveButton
         End If
 
 DeleteSheet:
@@ -148,7 +148,7 @@ Footer:
     
 End Sub
 
-Sub PullAttendenceButton()
+Sub ActivityPullAttendenceButton(Optional PassSheet As Worksheet)
 'Reproduces attendence as stored on the Records sheet
 
     Dim ActivitySheet As Worksheet
@@ -156,51 +156,53 @@ Sub PullAttendenceButton()
     Dim ActivityNameRange As Range
     Dim ActivityLabelCell As Range
     Dim RecordsLabelCell As Range
+    Dim i As Long
     Dim ActivityTable As ListObject
     
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    Set ActivitySheet = ActiveSheet
     Set RecordsSheet = Worksheets("Records Page")
+    
+    If PassSheet Is Nothing Then
+        Set ActivitySheet = ActiveSheet
+    Else
+        Set ActivitySheet = PassSheet
+    End If
     
     Call UnprotectSheet(ActivitySheet)
     
     'Check if there's a table, students, and label. Close without saving if these aren't present
-    If ActivitySheet.ListObjects.Count < 1 Then
-        MsgBox ("Something has gone wrong. Please close this activity and either load or recreate it.")
-        GoTo Footer
+    If CheckTable(ActivitySheet) > 2 Then
+        GoTo ErrorMessage
     End If
     
     Set ActivityTable = ActivitySheet.ListObjects(1)
-    If ActivityTable.ListRows.Count < 1 Then
-        GoTo Footer
-    End If
-    
-    Set ActivityLabelCell = ActivitySheet.Range("1:1").Find("Label", , xlValues, xlWhole).Offset(0, 1)
-    If ActivityLabelCell Is Nothing Or Len(ActivityLabelCell.Value) < 1 Then
-        MsgBox ("Something has gone wrong. Please close this activity and either load or recreate it.")
-        GoTo Footer
-    End If
-    
+    Set ActivityLabelCell = FindActivityLabel(ActivitySheet)
+        If ActivityLabelCell Is Nothing Then
+            GoTo ErrorMessage
+        End If
+
     'Check if there are students and activities
     If CheckRecords(RecordsSheet) <> 1 Then
         GoTo Footer
     End If
     
-    'Check if the activity has been saved at all. Prompt if it hasn't
+    'Check if the activity has been saved
     Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, ActivityLabelCell)
-    If RecordsLabelCell Is Nothing Then
-        GoTo Footer
-    ElseIf RecordsLabelCell.Value = "V BREAK" Then
-        GoTo Footer
-    End If
+        If RecordsLabelCell Is Nothing Then
+            GoTo Footer
+        End If
 
     'Pass to pull in attendence. All existing attendence will be cleared first
     Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
     
-    Call RecordsPullAttendance(ActivitySheet, ActivityNameRange, ActivityLabelCell)
+    Call ActivityPullAttendence(ActivitySheet, ActivityNameRange, ActivityLabelCell)
+    GoTo Footer
+
+ErrorMessage:
+    MsgBox ("Something has gone wrong. Please close this activity and recreate it.")
 
 Footer:
     Call ResetProtection
@@ -211,7 +213,7 @@ Footer:
     
 End Sub
 
-Sub DeleteActivityButton()
+Sub ActivityDeleteButton()
 'Deletes the activity and removes it from the Records and Report sheets
 
     Dim ActivitySheet As Worksheet
@@ -229,6 +231,10 @@ Sub DeleteActivityButton()
     Set ActivitySheet = ActiveSheet
     Set RecordsSheet = Worksheets("Records Page")
     Set ReportSheet = Worksheets("Report Page")
+    Set ActivityLabelCell = FindActivityLabel(ActivitySheet)
+        If ActivityLabelCell Is Nothing Then
+            GoTo Footer
+        End If
     
     'Confirm deletion
     DelConfirm = MsgBox("This activity will be permanently deleted. Do you wish to continue?", vbQuestion + vbYesNo + vbDefaultButton2)
@@ -236,38 +242,10 @@ Sub DeleteActivityButton()
         GoTo Footer
     End If
     
+    'Remove from the Records sheet. This also removes from the Report and closes the Activity sheet
     Call UnprotectSheet(ActivitySheet)
-    
-    'Make sure the activity has been recorded. If not, just delete the sheet
-    Set ActivityLabelCell = FindActivityLabel(ActivitySheet)
-    If ActivityLabelCell Is Nothing Or Len(ActivityLabelCell.Value) < 1 Then
-        GoTo DeleteSheet
-    End If
-    
-    Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, ActivityLabelCell)
-    If RecordsLabelCell Is Nothing Then
-        GoTo CheckReport
-    ElseIf RecordsLabelCell.Value = "V BREAK" Then
-        GoTo CheckReport
-    End If
-    
-    'Clear activity from the Records Page
-    RecordsLabelCell.EntireColumn.Delete
-    
-CheckReport:
-    'Clear the activity from the Report Page
-    Set ReportLabelCell = FindReportLabel(ReportSheet, ActivityLabelCell)
-    If ReportLabelCell Is Nothing Then
-        GoTo DeleteSheet
-    ElseIf ReportLabelCell.Value = "Total" Then
-        GoTo DeleteSheet
-    End If
-    
-    'Clear from the report
-    Call ClearReportActivity(ActivityLabelCell)
-    
-DeleteSheet:
-    ActivitySheet.Delete
+    Call RemoveRecordsActivity(RecordsSheet, ActivityLabelCell)
+
     
 Footer:
     Call ResetProtection

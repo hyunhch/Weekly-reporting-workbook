@@ -1,7 +1,88 @@
 Attribute VB_Name = "RosterSubs"
 Option Explicit
 
-Sub NamesToRecords()
+Sub RosterClear(RosterSheet As Worksheet, Optional PromptString As String)
+'Called by the ClearRosterButton
+'Passing "Prompt" asks confirmation for deleting and exporting
+
+    Dim OldBook As Workbook
+    Dim NewBook As Workbook
+    Dim ActivitySheet As Worksheet
+    Dim DelRange As Range
+    Dim i As Long
+    Dim RosterTable As ListObject
+    
+    Set OldBook = ThisWorkbook
+    
+    'Check if there's a table with rows. Skip the export prompt if so
+    If CheckTable(RosterSheet) > 2 Then
+        GoTo ClearRecords
+    End If
+    
+    Set RosterTable = RosterSheet.ListObjects(1)
+    Set DelRange = RosterTable.ListColumns("First").DataBodyRange
+    
+    'Prompt for deleting and exporting
+    If PromptString <> "Prompt" Then
+        GoTo ClearRecords
+    End If
+    
+    'Prompt to confirm deletion
+    i = PromptRemoveRoster(DelRange)
+        If i <> 1 Then
+            GoTo Footer
+        End If
+    
+    'Prompt to confirm exporting
+    i = PromptExport(DelRange)
+        If i <> 1 Then
+            GoTo ClearRecords
+        End If
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.EnableEvents = False
+    
+    'Generate a new book
+    Set NewBook = ExportFromRoster(DelRange)
+        If NewBook Is Nothing Then
+            GoTo ClearRecords
+        End If
+        
+    'Save and close the new book
+    If ExportLocalSave(OldBook, NewBook) > 0 Then
+        On Error Resume Next
+        NewBook.Close savechanges:=False
+        On Error GoTo 0
+    End If
+    
+ClearRecords:
+    Call RecordsClear
+    
+    'Clear the report
+    Call ReportClearButton
+    
+    'Clear the Roster
+    Set DelRange = RosterSheet.Range("A6")
+    
+    Call ClearSheet(RosterSheet, , DelRange)
+
+    'Loop through and find any open activity sheet to delete
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    For Each ActivitySheet In OldBook.Sheets
+        If ActivitySheet.Range("A1").Value = "Practice" Then
+            ActivitySheet.Delete
+        End If
+    Next ActivitySheet
+
+Footer:
+
+End Sub
+
+Sub RosterNamesToRecords()
 'Whenever the roster is parted, compare the names listed on the records and roster sheets
 'Add new students, delete missing ones with a prompt to export Attendance
 

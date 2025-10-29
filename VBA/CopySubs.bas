@@ -1,6 +1,160 @@
 Attribute VB_Name = "CopySubs"
 Option Explicit
 
+Function CopyRow(SourceSheet As Worksheet, SourceRange As Range, TargetSheet As Worksheet, TargetRange As Range) As Range
+'Copies over rows directly from a passed cell in the "Select" column
+'Destination does not need to have a table
+'Returns range of all added rows
+
+    Dim CopyRange As Range
+    Dim PasteRange As Range
+    Dim RowRange As Range
+    Dim ReturnRange As Range
+    Dim c As Range
+    Dim d As Range
+    Dim i As Long
+    Dim j As Long
+    
+    'Find the width of the row we are copying
+    Set c = SourceSheet.Cells(SourceRange.Row, 1)
+    Set d = SourceSheet.Cells.Find("*", SearchOrder:=xlByColumns, SearchDirection:=xlPrevious)
+        If d.Column = SourceRange.Column Then
+            GoTo Footer
+        End If
+    
+    Set RowRange = SourceSheet.Range(c, Cells(c.Row, d.Column).Address)
+    
+    'Loop through and copy over
+    i = 1
+    For Each c In SourceRange
+        j = c.Row - RowRange.Row
+        
+        Set CopyRange = RowRange.Offset(j, 0)
+        Set d = TargetSheet.Cells(TargetRange.Row, 1) 'Not sure if this helps
+        Set PasteRange = d.Resize(1, CopyRange.Columns.Count).Offset(i - 1, 0)
+        Set ReturnRange = BuildRange(PasteRange, ReturnRange)
+        
+        PasteRange.Value = CopyRange.Value
+        i = i + 1
+    Next c
+    
+    'Return
+    Set CopyRow = ReturnRange
+    
+Footer:
+    
+End Function
+
+Function CopyTableRow(CopySheet As Worksheet, PasteSheet As Worksheet, CopyCell As Range, Optional PasteCell As Range) As Range
+'General function that tries to match headers between two tables and copy over
+'Headers that are not found are ignored
+'By default, copies to the bottom of the table
+'If a PasteCell is passed, pastes in that row
+'Returns the pasted row if successful, nothing on error
+
+    Dim CopyRange As Range
+    Dim PasteRange As Range
+    Dim CopyHeaderRange As Range
+    Dim PasteHeaderRange As Range
+    Dim c As Range
+    Dim d As Range
+        
+    Call UnprotectSheet(CopySheet)
+    Call UnprotectSheet(PasteSheet)
+
+    'Grab source and destination headers. Verifying there is a should be done in a parent sub
+    Set CopyHeaderRange = CopySheet.ListObjects(1).HeaderRowRange
+    Set PasteHeaderRange = PasteSheet.ListObjects(1).HeaderRowRange
+
+    'Paste under the last row unless a PateCell was passed
+    If PasteCell Is Nothing Then
+        Set c = FindLastRow(PasteSheet)
+            If c Is Nothing Then
+                GoTo Footer
+            End If
+        
+        Set PasteCell = c.Offset(1, 0)
+    End If
+    
+    'Match headers and move over the information. Programatic for changes in order and when some aren't found
+    For Each c In CopyHeaderRange
+        Set d = FindTableHeader(PasteSheet, c.Value)
+        
+        If Not d Is Nothing Then
+            Set CopyRange = CopySheet.Cells(CopyCell.Row, c.Column)
+            Set PasteRange = PasteSheet.Cells(PasteCell.Row, d.Column)
+                PasteRange.Value = CopyRange.Value
+        End If
+    Next c
+
+    'Return row
+    Set c = FindTableRow(PasteSheet, PasteCell)
+        If c Is Nothing Then
+            GoTo Footer
+        End If
+        
+    Set CopyTableRow = c
+
+Footer:
+
+End Function
+
+Function CopyNames(CheckRange As Range) As Range
+'Copies only the checked first and last names
+'For adding students to the Records Page, filtering should be done beforehand
+
+    Dim RosterSheet As Worksheet
+    Dim RecordsSheet As Worksheet
+    Dim CopyRange As Range
+    Dim PasteRange As Range
+    Dim NameRange As Range
+    Dim c As Range
+    Dim ReturnRange As Range
+    Dim i As Long
+    Dim RosterTable As ListObject
+    
+    Set RosterSheet = Worksheets("Roster Page")
+    Set RecordsSheet = Worksheets("Records Page")
+    Set RosterTable = RosterSheet.ListObjects(1)
+    
+    'Find the last row
+    Set c = RecordsSheet.Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+        If c Is Nothing Then
+            GoTo Footer
+        End If
+    
+    Set PasteRange = c.Resize(1, 2) 'Not the row under
+    
+    'Nudge over from the select column to the First column
+    Set c = RosterTable.ListColumns("First").DataBodyRange
+        If c Is Nothing Then
+            GoTo Footer
+        End If
+        
+    Set NameRange = Intersect(CheckRange.EntireRow, c)
+    
+    'Loop through
+    i = 1
+    For Each c In NameRange
+        Set CopyRange = c.Resize(1, 2)
+            PasteRange.Offset(i, 0).Value = CopyRange.Value
+            
+        Set ReturnRange = BuildRange(PasteRange.Offset(i, 0), ReturnRange)
+        
+        i = i + 1
+    Next c
+    
+    If ReturnRange Is Nothing Then
+        GoTo Footer
+    End If
+
+    Set ReturnRange = ReturnRange.Resize(i - 1, 1)
+    Set CopyNames = ReturnRange
+
+Footer:
+
+End Function
+
 Sub CopyAllStudents(RosterSheet As Worksheet, TargetSheet As Worksheet, TargetCell As Range)
 'Copies all students to the passed cell
 
@@ -22,39 +176,19 @@ Sub CopyAllStudents(RosterSheet As Worksheet, TargetSheet As Worksheet, TargetCe
 
 End Sub
 
-Sub CopyFromRecordsTest()
-
-    Dim RecordsSheet As Worksheet
-    Dim ActivitySheet As Worksheet
-    Dim LabelCell As Range
-    Dim OperationString As String
-    
-    Set RecordsSheet = Worksheets("Records Page")
-    Set ActivitySheet = ActiveSheet
-    Set LabelCell = RecordsSheet.Range("G1")
-    
-    'Call CreateActivityTable(ActivitySheet)
-    
-    Call CopyFromRecords(RecordsSheet, ActivitySheet, LabelCell)
-
-End Sub
-
-Function CopyFromRecords(RecordsSheet As Worksheet, ActivitySheet As Worksheet, LabelCell As Range, Optional OperationString As String) As Range
+Function CopyFromRecords(ActivitySheet As Worksheet, LabelCell As Range, Optional OperationString As String) As Range
 'Grabs all students marked present or absent on the Records page for an activity and pastes them into an an Activity sheet
 'Prompts for exporting and deleting if some students aren't found
 'Passing "Present" grabs only present students
 'Passing "Absent" grabs only absent students
-
+    
+    Dim RecordsSheet As Worksheet
     Dim RosterSheet As Worksheet
     Dim RosterNameRange As Range
-    Dim RosterCopyRange As Range
     Dim RecordsAttendanceRange As Range
-    Dim RecordsCopyRange As Range
-    Dim ActivityNameHeader As Range
     Dim ActivityNameRange As Range
     Dim PresentRange As Range
     Dim AbsentRange As Range
-    Dim TempRange As Range
     Dim CopyRange As Range
     Dim PasteRange As Range
     Dim c As Range
@@ -62,267 +196,158 @@ Function CopyFromRecords(RecordsSheet As Worksheet, ActivitySheet As Worksheet, 
     Dim ActivityTable As ListObject
     Dim RosterTable As ListObject
     
+    Set RecordsSheet = Worksheets("Records Page")
     Set RosterSheet = Worksheets("Roster Page")
-    
-    'Make sure there are students and activities
-    If CheckRecords(RecordsSheet) > 1 Then
-        GoTo Footer
-    End If
     
     'Grab attendance
     Set RecordsAttendanceRange = FindRecordsAttendance(RecordsSheet, , LabelCell)
-    
-    If RecordsAttendanceRange Is Nothing Then
-        GoTo Footer
+        If RecordsAttendanceRange Is Nothing Then
+            GoTo Footer
+        'Make sure there are any students marked present or absent
+        ElseIf FindStudentAttendance(RecordsSheet, RecordsAttendanceRange, "Both") Is Nothing Then
+            GoTo Footer
+        End If
+        
+    'Find all present and absent students
+    Set c = FindStudentAttendance(RecordsSheet, RecordsAttendanceRange)
+    Set d = FindStudentAttendance(RecordsSheet, RecordsAttendanceRange, "Absent")
+        If c Is Nothing And d Is Nothing Then
+            GoTo Footer
+        End If
+        
+    'Nudge to the names
+    If Not c Is Nothing Then
+        Set PresentRange = c.Offset(0, -c.Column + 1)
     End If
     
-    'Find all present and absent students
-    For Each c In RecordsAttendanceRange
-        If c.Value = "1" Then
-            Set PresentRange = BuildRange(c.Offset(0, -c.Column + 1), PresentRange) 'Move to where the names are
-        ElseIf c.Value = "0" Then
-            Set AbsentRange = BuildRange(c.Offset(0, -c.Column + 1), AbsentRange)
-        End If
-    Next c
+    If Not d Is Nothing Then
+        Set AbsentRange = d.Offset(0, -d.Column + 1)
+    End If
     
     'Make sure we have a table on the ActivitySheet
     If CheckTable(ActivitySheet) > 3 Then
-        Set ActivityTable = CreateActivityTable(ActivitySheet)
-    Else
-        Set ActivityTable = ActivitySheet.ListObjects(1)
-        Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
+        Set ActivityTable = MakeActivityTable(ActivitySheet)
     End If
     
-    'Find where to start copying
-    Set ActivityNameHeader = FindTableHeader(ActivitySheet, "First")
+    Set ActivityTable = ActivitySheet.ListObjects(1)
     
-    If ActivityNameHeader Is Nothing Then 'This shouldn't be able to happen
-        MsgBox ("Something has gone wrong. Please delete this sheet and create it again.")
-        GoTo Footer
-    End If
+    'Find where to start pasting
+    Set PasteRange = FindLastRow(ActivitySheet).Offset(1, 0)
+        If PasteRange Is Nothing Then 'This shouldn't be able to happen
+            MsgBox ("Something has gone wrong. Please delete this sheet and create it again.")
+            GoTo Footer
+        End If
     
     'Match students and copy
     Set RosterTable = RosterSheet.ListObjects(1)
     Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
     
-    'All present students
-    If PresentRange Is Nothing Then
-        GoTo CopyAbsent
+    'Match present and absent students
+    If Not PresentRange Is Nothing Then
+        Set c = FindName(PresentRange, RosterNameRange)
     End If
-
-    If OperationString <> "Absent" Then
-        Set PasteRange = ActivityNameHeader.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Offset(1, 0)
-        Set TempRange = FindName(PresentRange, RosterNameRange)
+    
+    If Not AbsentRange Is Nothing Then
+        Set d = FindName(AbsentRange, RosterNameRange)
+    End If
+    
+    Select Case OperationString
+    
+        Case "Absent"
+            Set CopyRange = d
         
-        If ActivityNameRange Is Nothing Then
-            'Copy all present students
-            Set RosterCopyRange = TempRange
-        Else
-            'Only copy new present students
-            Set RosterCopyRange = FindUnique(TempRange, ActivityNameRange)
-        End If
+        Case "Present"
+            Set CopyRange = c
         
-        If RosterCopyRange Is Nothing Then
-            GoTo CopyAbsent
-        End If
+        Case Else
+            If Not c Is Nothing Then
+                Set CopyRange = c
+            End If
             
-        For Each c In RosterCopyRange
-            Set d = c.Resize(1, RosterTable.ListColumns.Count - 1)
-            Set CopyRange = BuildRange(d, CopyRange)
-        Next c
-        
-        'Copy and mark checked
-        Set c = CopyRows(RosterSheet, CopyRange, ActivitySheet, PasteRange)
-        
-        c.Offset(0, -1).Value = "a"
-        
-        'Return range part 1
-        Set CopyFromRecords = c
-    End If
-
-CopyAbsent:
-    'All absent students
-    If AbsentRange Is Nothing Then
-        GoTo RemakeTable
+            If Not d Is Nothing Then
+                Set CopyRange = BuildRange(d, CopyRange)
+            End If
+            
+    End Select
+    
+    If CopyRange Is Nothing Then
+        GoTo Footer
     End If
     
-    If OperationString <> "Present" Then
-        Set PasteRange = ActivityNameHeader.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Offset(1, 0)
-        Set TempRange = FindName(AbsentRange, RosterNameRange)
-        
-        If ActivityNameRange Is Nothing Then
-            'Copy all absent students
-            Set RosterCopyRange = TempRange
-        Else
-            'Only copy new absent students
-            Set RosterCopyRange = FindUnique(TempRange, ActivityNameRange)
-        End If
-        
-        If RosterCopyRange Is Nothing Then
-            GoTo RemakeTable
-        End If
-        
-        Set CopyRange = Nothing 'Otherwise the range for present students is still included
-        For Each c In RosterCopyRange
-            Set d = c.Resize(1, RosterTable.ListColumns.Count - 1)
-            Set CopyRange = BuildRange(d, CopyRange)
-        Next c
+    'Copy over and pull attendance
+    Call CopyRow(RosterSheet, CopyRange.Offset(0, -1), ActivitySheet, PasteRange)
     
-        'Copy and mark unchecked
-        Set c = CopyRows(RosterSheet, CopyRange, ActivitySheet, PasteRange)
-        
-        c.Offset(0, -1).Value = ""
-        
-        'ReturnRange part 2
-        Set CopyFromRecords = BuildRange(c, CopyFromRecords)
-    End If
+    ActivitySheet.Activate
+    Call ActivityPullAttendenceButton
     
 RemakeTable:
-    Set ActivityTable = CreateActivityTable(ActivitySheet)
+    Set ActivityTable = MakeActivityTable(ActivitySheet)
     
-    Call FormatTable(ActivitySheet, ActivityTable)
+    Call TableFormat(ActivitySheet, ActivityTable)
     
     'Pull in attendance
     Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
-    Call RecordsPullAttendance(ActivitySheet, ActivityNameRange, LabelCell)
+    Call ActivityPullAttendence(ActivitySheet, ActivityNameRange, LabelCell)
     
 Footer:
 
 End Function
 
-Function CopyRows(SourceSheet As Worksheet, SourceRange As Range, TargetSheet As Worksheet, TargetRange As Range) As Range
-'Pastes starting at the PasteStart
-'Checking that there are no duplicates, etc. should all be done in parent function
-'The entire portion of the row to be moved over are passed
-
-    Dim CopyRange As Range
-    Dim PasteRange As Range
-    Dim ReturnRange As Range
-    Dim c As Range
-    Dim d As Range
-    Dim i As Long
-    
-    i = 0
-    For Each c In SourceRange.Rows
-        Set CopyRange = c
-        Set d = TargetRange.Resize(1, c.Columns.Count)
-        Set PasteRange = d.Offset(i, 0)
-        Set ReturnRange = BuildRange(TargetRange.Offset(i, 0), ReturnRange)
-        
-        PasteRange.Value = CopyRange.Value
-        i = i + 1
-    Next c
-    
-    Set CopyRows = ReturnRange
-    
-End Function
-
 Function CopyToActivity(RosterSheet As Worksheet, ActivitySheet As Worksheet, RosterAddRange As Range) As Range
 'Copies unique students in the passed range
+'Passes the "First" column
 
-    Dim PasteStartRange As Range
-    Dim ActivityNameHeader As Range
     Dim ActivityNameRange As Range
-    Dim FilteredAddRange As Range
     Dim CopyRange As Range
-    Dim ActivityDelRange As Range
+    Dim PasteRange As Range
     Dim c As Range
-    Dim d As Range
-    Dim e As Range
     Dim i As Long
-    Dim j As Long
-    Dim HeaderArray() As Variant
     Dim ActivityTable As ListObject
     
-    'Start with the full list of students
-    Set FilteredAddRange = RosterAddRange
+    If RosterAddRange Is Nothing Then
+        GoTo Footer
+    End If
     
     'Determine where to start pasting
     i = CheckTable(ActivitySheet)
     
-    If i = 4 Then 'No students, this shouldn't happen
-        Set c = ActivitySheet.Range("A6")
-        
-        j = 1
-        ReDim HeaderArray(1 To RosterSheet.ListObjects(1).ListColumns.Count)
-        For Each d In RosterSheet.ListObjects(1).HeaderRowRange
-            HeaderArray(j) = d.Value
-            
-            j = j + 1
-        Next d
-        
-        Call ResetTableHeaders(ActivitySheet, c, HeaderArray)
-        Call CreateTable(ActivitySheet)
+    If i = 4 Then 'No table, this shouldn't happen
+        Set ActivityTable = MakeActivityTable(ActivitySheet)
+        Call TableFormat(ActivitySheet, ActivityTable)
     End If
     
     Set ActivityTable = ActivitySheet.ListObjects(1)
-    Set ActivityNameHeader = FindTableHeader(ActivitySheet, "First")
-        
-    If i = 3 Then 'No students
-        Set PasteStartRange = ActivityNameHeader.Offset(1, 0)
+    Set PasteRange = FindLastRow(ActivitySheet).Offset(1, 0)
+    
+    If i = 3 Then 'No students, copy over everyone
+        Set CopyRange = RosterAddRange
     Else
-        Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
-        Set PasteStartRange = ActivityNameHeader.Offset(ActivityTable.Range.Rows.Count, 0)
-        
         'Find all the students checked on the Roster that are not on the Activity
-        Set FilteredAddRange = FindUnique(RosterAddRange, ActivityNameRange)
-
-        If FilteredAddRange Is Nothing Then
-            GoTo CleanUp:
+        Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
+        Set CopyRange = FindUnique(RosterAddRange, ActivityNameRange)
+        
+        If CopyRange Is Nothing Then
+            GoTo CleanUp
         End If
     End If
-    
-    'Resize to the entire row, minus the first column
-    For Each c In FilteredAddRange
-        Set d = c.Resize(1, ActivityTable.ListColumns.Count - 1)
-        Set e = RosterSheet.Range(c, d)
-        Set CopyRange = BuildRange(e, CopyRange)
-    Next c
-    
-    'Set c = FilteredAddRange
-    'Set d = FilteredAddRange.Offset(0, ActivityTable.ListColumns.Count - ActivityNameHeader.Column)
-    'Set FilteredAddRange = RosterSheet.Range(c, d)
-
 
 CopyStudents:
     'Copy over
-    Call CopyRows(RosterSheet, CopyRange, ActivitySheet, PasteStartRange)
+    Call CopyRow(RosterSheet, CopyRange, ActivitySheet, PasteRange)
     
-    Set ActivityTable = CreateTable(ActivitySheet)
+    Set ActivityTable = MakeActivityTable(ActivitySheet)
     Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
     
 CleanUp:
-    'If there are students on the ActivitySheet but not the Roster, duplicates, or blank rows
+    'Remove any duplicates or blanks
+    Call RemoveBadRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange)
+    
+    'Remove any students on the ActivitySheet but not the RosterSheet. This shouldn't happen
     Set c = FindUnique(ActivityNameRange, RosterSheet.ListObjects(1).ListColumns("First").DataBodyRange)
-    Set d = FindDuplicate(ActivityNameRange)
-    Set e = FindBlanks(ActivitySheet, ActivityNameRange)
-
-    'Build into a single range
-    If Not c Is Nothing Then
-        Set ActivityDelRange = c
-    End If
-    
-    If Not d Is Nothing Then
-        If ActivityDelRange Is Nothing Then
-            Set ActivityDelRange = d
-        Else
-            Set ActivityDelRange = Union(ActivityDelRange, d)
+        If Not c Is Nothing Then
+            Call RemoveRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange, c)
         End If
-    End If
     
-    If Not e Is Nothing Then
-        If ActivityDelRange Is Nothing Then
-            Set ActivityDelRange = e
-        Else
-            Set ActivityDelRange = Union(ActivityDelRange, e)
-        End If
-    End If
-    
-    'Delete the combined range. The table is remade in the child sub
-    If Not ActivityDelRange Is Nothing Then
-        Call RemoveRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange, ActivityDelRange)
-    End If
-
     'Return
     Set c = PasteStartRange.EntireColumn.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
     Set CopyToActivity = ActivitySheet.Range(PasteStartRange, c)
@@ -473,188 +498,147 @@ Function CopyToRecords(RecordsSheet As Worksheet, RosterSheet As Worksheet, Rost
 'Returns nothing if no students are added
 'Checks don't matter, called when the roster is parsed
 
-    Dim OldBook As Workbook
-    Dim NewBook As Workbook
     Dim ActivitySheet As Worksheet
-    Dim ActivityDelRange As Range
     Dim RecordsNameRange As Range
-    Dim RecordsFullNameRange As Range
-    Dim RecordsLabelRange As Range
-    Dim AddStudentRange As Range
-    Dim RemoveStudentRange As Range
-    Dim PasteStartRange As Range
+    Dim RecordsAttendanceRange As Range
+    Dim CopyRange As Range
+    Dim PasteRange As Range
     Dim c As Range
-    Dim d As Range
-    Dim ExportConfirm As Long
     Dim i As Long
-    Dim j As Long
 
-    'Find names on RecordsSheet. It will be the "H BREAK" padding cell if there are none
-    Set RecordsNameRange = FindRecordsName(RecordsSheet)
-
-    'See if there are existing students
+    'See if there are existing students on the RecordsSheet
     i = CheckRecords(RecordsSheet)
     
     If i = 2 Or i = 4 Then 'No students on the sheet
-        Set AddStudentRange = RosterNameRange
+        Set CopyRange = RosterNameRange
+        
         GoTo CopyStudents
     End If
 
-    'See if there are students on the Records sheet but not on the Roster sheet anymore
-    Set RecordsFullNameRange = Union(RecordsNameRange, RecordsNameRange.Offset(0, 1))
-    Set AddStudentRange = FindUnique(RosterNameRange, RecordsNameRange)
-    Set RemoveStudentRange = FindUnique(RecordsNameRange, RosterNameRange)
-
-    If RemoveStudentRange Is Nothing Then
-        GoTo CopyStudents
-    End If
-    
-    'Prompt to export
-    j = RemoveStudentRange.Cells.Count
-    ExportConfirm = MsgBox(j & " students are no longer on your roster. " & _
-        "Do you want to save a copy of these students' attendance before removing them?", vbQuestion + vbYesNo + vbDefaultButton2)
-        
-    If ExportConfirm = vbYes Then
-        Set OldBook = ThisWorkbook
-        Set NewBook = MakeNewBook(RecordsSheet, RosterSheet, RemoveStudentRange)
-        
-        Call SaveNewBook(OldBook, NewBook)
-        OldBook.Activate
-    End If
-    
+    'Grab students on the RecordsSheet and identify any not the RosterSheet anymore
+    Set RecordsNameRange = FindRecordsName(RecordsSheet)
+    Set CopyRange = FindUnique(RosterNameRange, RecordsNameRange)
+    Set DelRange = FindUnique(RecordsNameRange, RosterNameRange)
+        If DelRange Is Nothing Then
+            GoTo CopyStudents
+        End If
+     
     'Remove from any open activity sheet
     For Each ActivitySheet In ThisWorkbook.Sheets
         If ActivitySheet.Range("A1").Value = "Practice" Then
-            'This checks if there's a table with students, matches names, removed, and saved the activity again
-            Call RemoveFromActivity(ActivitySheet, RemoveStudentRange)
+            'This checks if there's a table with students, matches names, removed, and saves the activity again
+            Call RemoveFromActivity(ActivitySheet, DelRange)
         End If
     Next ActivitySheet
+     
+    'Delete students on the RecordsSheet but not the RosterSheet
+    Set RecordsAttendanceRange = FindRecordsAttendance(RecordsSheet)
+    Set c = RecordsSheet.Range(RecordsNameRange, RecordsAttendanceRange) 'Needs to include the first two columns
 
-    'Remove students from RecordsSheet
-    Call RemoveRows(RecordsSheet, RecordsFullNameRange.EntireRow, RecordsNameRange, RemoveStudentRange)
+    Call RemoveRows(RecordsSheet, c, RecordsNameRange, DelRange)
 
 CopyStudents:
     'No new students to add
-    If AddStudentRange Is Nothing Then
-        GoTo CleanUp
-    ElseIf RecordsNameRange Is Nothing Then
+    If CopyRange Is Nothing Then
         GoTo CleanUp
     End If
-
-    'Copy over unique students
-    Set c = RecordsNameRange.Resize(1, 1)
-    Set PasteStartRange = c.Offset(RecordsNameRange.Rows.Count, 0)
-    Set d = Union(AddStudentRange, AddStudentRange.Offset(0, 1))
     
-    Call CopyRows(RosterSheet, d, RecordsSheet, PasteStartRange)
+    'Copy over
+    Set PasteRange = CopyNames(CopyRange)
     
 CleanUp:
     Set RecordsNameRange = FindRecordsName(RecordsSheet) 'To account for added/removed students
-    Set c = FindDuplicate(RecordsNameRange)
-    Set d = FindBlanks(RecordsSheet, RecordsNameRange)
+    Set RecordsAttendanceRange = FindRecordsAttendance(RecordsSheet)
+    Set c = RecordsSheet.Range(RecordsNameRange, RecordsAttendanceRange) 'Needs to include all columns for sorting
     
-    'Duplicates
-    If Not c Is Nothing Then
-        Set RemoveStudentRange = c
-    End If
-    
-    'Blanks
-    If Not d Is Nothing Then
-        If RemoveStudentRange Is Nothing Then
-            Set RemoveStudentRange = d
-        Else
-            Set RemoveStudentRange = Union(RemoveStudentRange, d)
-        End If
-    End If
-    
-    'Remove duplicates and blank rows
-    If Not c Is Nothing Or Not d Is Nothing Then
-        Call RemoveRows(RecordsSheet, RecordsFullNameRange.EntireRow, RecordsNameRange, RemoveStudentRange)
-    End If
-    
+    Call RemoveBadRows(RecordsSheet, c, RecordsNameRange)
+
     'Return
-    If AddStudentRange Is Nothing Then 'If no students were added
+    If CopyRange Is Nothing Then 'If no students were added
         GoTo Footer
     End If
-    
-    Set c = RecordsSheet.Range("A:A").Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
-    Set CopyToRecords = RecordsSheet.Range(PasteStartRange, c)
+
+    Set CopyToRecords = PasteRange
 
 Footer:
 
 End Function
 
-Function CopyToReport(ReportSheet As Worksheet, PasteCell As Range, PasteArray As Variant) As Range
-'Copies values passed in the array to the row of the PasteCell
-'Can pass anything in the report header
-    
+Function CopyToReport(ReportSheet As Worksheet, LabelString As String, PasteArray As Variant) As Range
+'SourceSheet can be the roster or an activity
+'Can take the "Total" label to calculate
+
     Dim ReportHeaderRange As Range
+    Dim ReportLabelRange As Range
+    Dim TabulateRange As Range
+    Dim PasteCell As Range
     Dim ReturnRange As Range
+    Dim OtherCell As Range
     Dim c As Range
     Dim d As Range
-    Dim PasteOffset As Long
     Dim i As Long
-    Dim j As Long
-    Dim OtherIndex As Long
-    Dim OtherString As String
-    Dim HeaderString As String
+    Dim OtherValue As Long
+    Dim TempHeader As String
     Dim ReportTable As ListObject
-
+    Dim TempValue As Variant 'Can be strings
+    
     Set ReportTable = ReportSheet.ListObjects(1)
     Set ReportHeaderRange = ReportTable.HeaderRowRange
+    Set ReportLabelRange = ReportTable.ListColumns("Label").DataBodyRange
 
     Call UnprotectSheet(ReportSheet)
     
-    'Push to Report Page
-    j = 0
-    For i = 1 To UBound(PasteArray)
-        HeaderString = PasteArray(i, 1)
-        
-        'Grab the index of the "Other" category
-        If InStr(1, HeaderString, "Other") > 0 Then
-            OtherIndex = i
-            OtherString = PasteArray(OtherIndex, 1)
-        End If
-        
-        Set c = ReportHeaderRange.Find(HeaderString, , xlValues, xlWhole)
-        
-        If Not c Is Nothing Then
-            'Paste under the matching header
-            Set d = ReportSheet.Cells(PasteCell.Row, c.Column)
-            d.Value = PasteArray(i, 2)
-            Set ReturnRange = BuildRange(d, ReturnRange)
-            
-            'Get rid of zeroes
-            If d.Value = 0 Then
-                d.ClearContents
-            End If
-        Else
-            'Sum up elements that aren't found in the header
-            If IsNumeric(PasteArray(i, 2)) = True Then
-                j = j + PasteArray(i, 2) 'Using this so we don't run into problems with strings
-            End If
-        End If
-    Next i
-
-    'Skip adding up "others" if no other category was found, such as with Low Income
-    If OtherIndex < 1 Then
-        GoTo ReturnRange
+    'Check if the label already exists on the table. If not, add a new row
+    Set PasteCell = FindReportLabel(ReportSheet, LabelString)
+    
+    'If not found, paste at the bottom of the table
+    If PasteCell Is Nothing Then
+        Set PasteCell = FindLastRow(ReportSheet, "Label").Offset(1, 0)
     End If
-
-    'Push all leftover elements into the "Other" category
-    'This will allow the list of categories to change in the future
-    If j > 0 Then
-        PasteArray(OtherIndex, 2) = PasteArray(OtherIndex, 2) + j
-        Set c = ReportHeaderRange.Find(OtherString, , xlValues, xlWhole)
-            If c Is Nothing Then 'For Low Income and First Generation
-                GoTo ReturnRange
+    
+    'This will return the 2nd row if there are no activities
+    If PasteCell.Value = "Total" And Not LabelString = "Total" Then
+        Set PasteCell = PasteCell.Offset(1, 0)
+    End If
+    
+    'Find each header in the passed array
+    For i = 1 To UBound(PasteArray, 2)
+        TempHeader = PasteArray(1, i)
+        TempValue = PasteArray(2, i)
+        
+        Set c = ReportHeaderRange.Find(TempHeader, , xlValues, xlWhole)
+        
+        If c Is Nothing Then 'All bad entires go into the Other category
+            If IsNumeric(TempValue) Then
+                OtherValue = OtherValue + TempValue
             End If
+            
+            GoTo NextHeader
+        ElseIf InStr(1, TempHeader, "Other") > 0 Then
+            Set OtherCell = c.Offset(1, 0)
+        End If
+        
         Set d = ReportSheet.Cells(PasteCell.Row, c.Column)
         
-        d.Value = PasteArray(OtherIndex, 2)
+        d.ClearContents
+        d.Value = TempValue
+        
+        'No zeroes
+        If d.Value = 0 Then
+            d.ClearContents
+        End If
+        
         Set ReturnRange = BuildRange(d, ReturnRange)
+NextHeader:
+    Next i
+    
+    'Add any bad values to the 'Other' category, if it exists
+    If OtherValue > 0 Then
+        If Not OtherCell Is Nothing Then
+            OtherCell.Value = OtherCell.Value + OtherValue
+        End If
     End If
-
+    
 ReturnRange:
     If Not ReturnRange Is Nothing Then
         Set CopyToReport = ReturnRange

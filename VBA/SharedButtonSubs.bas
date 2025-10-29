@@ -10,6 +10,7 @@ Sub RemoveSelectedButton()
     Dim DelRange As Range
     Dim c As Range
     Dim d As Range
+    Dim i As Long
     Dim DelTable As ListObject
     
     Application.ScreenUpdating = False
@@ -18,8 +19,14 @@ Sub RemoveSelectedButton()
     
     Set DelSheet = ActiveSheet
     
-    'Make sure there's a table with at least one student checked
-    If CheckTable(DelSheet) <> 1 Then
+    'Make sure there's a table with at least one row checked
+    If DelSheet.Name = "Report Page" Then
+        i = CheckReport(DelSheet)
+    Else
+        i = CheckTable(DelSheet)
+    End If
+    
+    If i <> 1 Then
         GoTo Footer
     End If
     
@@ -27,27 +34,21 @@ Sub RemoveSelectedButton()
     Set SearchRange = DelTable.DataBodyRange
     Set SortRange = DelTable.ListColumns("Select").DataBodyRange
     
-    'On the Report Page, there should always be a Totals row under the headers, but that row can't be checked
-    'We don't want to sort the Totals row
-    If DelSheet.Name = "Report Page" Then
-        Set c = SearchRange.Resize(SearchRange.Rows.Count - 1, SearchRange.Columns.Count)
-        Set SearchRange = c.Offset(1, 0)
-
-        Set c = SortRange.Resize(SortRange.Rows.Count - 1, 1)
-        Set SortRange = c.Offset(1, 0)
-    End If
-    
     'Find the checked rows
     Set DelRange = FindChecks(SortRange)
-    
-    'Different procedures for different sheets
-    If DelSheet.Name = "Roster Page" Then
-        Call RemoveFromRoster(DelRange.Offset(0, 1))
-    ElseIf DelSheet.Range("A1").Value = "Practice" Then
-        Call RemoveFromActivity(DelSheet, DelRange.Offset(0, 1))
-    Else
-        Call RemoveRows(DelSheet, SearchRange, SortRange, DelRange)
-    End If
+
+    'Different procedures on the Roster, Activity, and Report pages
+    Select Case DelSheet.Name
+        Case "Roster Page"
+            Call RemoveFromRoster(DelSheet, DelRange, "Prompt")
+        
+        Case "Report Page"
+            Call RemoveFromReport(DelRange)
+            
+        Case Else
+            Call RemoveFromActivity(DelSheet, DelRange)
+
+    End Select
     
 Footer:
     Application.ScreenUpdating = True
@@ -62,27 +63,36 @@ Sub SelectAllButton()
 
     Dim CheckSheet As Worksheet
     Dim CheckRange As Range
+    Dim c As Range
+    Dim i As Long
     Dim CheckRows As Long
-    Dim CheckTable As ListObject
+    Dim TargetTable As ListObject
     
     Set CheckSheet = ActiveSheet
     
     Call UnprotectSheet(CheckSheet)
     
-    'If there isn't a table
-    If CheckSheet.ListObjects.Count = 0 Then
-        GoTo Footer
+    'If Check for a table with rows
+    If CheckSheet.Name <> "Report Page" Then
+        i = CheckReport(CheckSheet)
+    Else
+        i = CheckTable(CheckSheet)
     End If
     
-    Set CheckTable = CheckSheet.ListObjects(1)
-    Set CheckRange = CheckTable.ListColumns("Select").DataBodyRange
-    
-    'If there are no rows in the data body range
-    If CheckRange Is Nothing Then
+    If i > 2 Then
         GoTo Footer
     End If
+        
+    'Define range to search
+    Set TargetTable = CheckSheet.ListObjects(1)
+    Set c = TargetTable.ListColumns("Select").DataBodyRange
+    Set CheckRange = c.SpecialCells(xlCellTypeVisible)
+        If CheckRange Is Nothing Then 'No visible cells
+            GoTo Footer
+        End If
     
     CheckRows = CheckRange.Rows.Count
+    c.Font.Name = "Marlett"
     
     'Exclude first row on Report sheet
     If CheckSheet.Name = "Report Page" Then
@@ -96,16 +106,22 @@ Sub SelectAllButton()
     
     'Check all if any are blank, uncheck all if none are blank
     'Only apply to visible cells
-    CheckRange.Font.Name = "Marlett"
+    For Each c In CheckRange
+        If c.Value <> "a" Then
+            CheckRange.Value = "a"
+            
+            GoTo Footer
+        End If
+    Next c
     
-    If Application.CountIf(CheckRange, "a") = CheckRows Then
-        CheckRange.SpecialCells(xlCellTypeVisible).Value = ""
-    Else
-        CheckRange.SpecialCells(xlCellTypeVisible).Value = "a"
-    End If
+    CheckRange.Value = ""
 
 Footer:
     Call ResetProtection
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
 
 End Sub
 

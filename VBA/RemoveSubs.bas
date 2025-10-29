@@ -1,15 +1,66 @@
 Attribute VB_Name = "RemoveSubs"
 Option Explicit
 
+Function RemoveBadRows(TargetSheet As Worksheet, TableBodyRange As Range, SearchRange As Range, Optional SearchType As String) As Long
+'Removes duplicate students and blank rows in a given table data body range
+'Passing "Duplicate" or "Blank" will restrict deletions to those instances
+'Returns the number of duplicates removed
+'Returns nothing on error
+
+    Dim c As Range
+    Dim d As Range
+    Dim DelRange As Range
+    Dim i As Long
+    
+    i = 0
+    
+    If Not SearchType = "Duplicate" Then
+       Set c = FindBlanks(SearchRange)
+       
+        If Not c Is Nothing Then
+            Set DelRange = c
+            
+        End If
+    End If
+    
+    If Not SearchType = "Blank" Then
+        Set d = FindDuplicate(SearchRange)
+        
+        If Not d Is Nothing Then
+            Set DelRange = BuildRange(d, DelRange)
+            
+            i = i + d.Cells.Count
+        End If
+    End If
+    
+    'Nothing to remove
+    If DelRange Is Nothing Then
+        RemoveBadRows = 0
+        
+        GoTo Footer
+    End If
+
+    'Delete
+    'i = DelRange.Cells.Count
+    Call RemoveRows(TargetSheet, TableBodyRange, SearchRange, DelRange)
+    
+    RemoveBadRows = i
+
+Footer:
+
+End Function
+
 Sub RemoveFromActivity(ActivitySheet As Worksheet, DelRange As Range)
 'Called whenever students need to be removed from an activity sheet
-'Remove students, save activity, retabulate
+'Remove students and repulls the attendance
 'DelRange can be from RosterSheet, the RecordsSheet, or the same ActivitySheet
 
     Dim RecordsSheet As Worksheet
     Dim ActivityNameRange As Range
     Dim ActivityDelRange As Range
     Dim LabelCell As Range
+    Dim c As Range
+    Dim DelConfirm As Long
     Dim ActivityTable As ListObject
     
     'Make sure there's a table with students
@@ -17,17 +68,32 @@ Sub RemoveFromActivity(ActivitySheet As Worksheet, DelRange As Range)
         GoTo Footer
     End If
     
+    Set RecordsSheet = Worksheets("Records Page")
     Set ActivityTable = ActivitySheet.ListObjects(1)
     Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
+    
+    'Prompt if everyone is being deleted
+    If DelRange.Cells.Count = ActivityNameRange.Cells.Count Then
+        DelConfirm = MsgBox("This activity will be permanently deleted. Do you wish to continue?", vbQuestion + vbYesNo + vbDefaultButton2)
+        
+        If DelConfirm <> vbYes Then
+            GoTo Footer
+        End If
+    End If
+    
+    'Nudge, if needed
+    Set DelRange = NudgeToHeader(DelRange.Worksheet, DelRange, "First")
     
     'If the range of names is already on the sheet, skip name matching
     If DelRange.Worksheet.Name = ActivitySheet.Name Then
         Set ActivityDelRange = DelRange
     Else
-        Set ActivityDelRange = FindName(DelRange, ActivityNameRange)
+        Set c = FindName(DelRange, ActivityNameRange)
+        
+        If Not c Is Nothing Then
+            Set ActivityDelRange = c
+        End If
     End If
-    
-    Call UnprotectSheet(ActivitySheet)
     
     'No matches fouund
     If ActivityDelRange Is Nothing Then
@@ -35,59 +101,133 @@ Sub RemoveFromActivity(ActivitySheet As Worksheet, DelRange As Range)
     End If
     
     'Remove students and save
-    Set RecordsSheet = Worksheets("Records Page")
-    Set LabelCell = FindActivityLabel(ActivitySheet)
+    Call UnprotectSheet(ActivitySheet)
     
-    If LabelCell Is Nothing Then 'This shouldn't happen
-        MsgBox ("Something has gone wrong. Please delete this sheet and remake it.")
-        GoTo Footer
-    End If
+    Set LabelCell = FindActivityLabel(ActivitySheet)
+        If LabelCell Is Nothing Then 'This shouldn't happen
+            MsgBox ("Something has gone wrong. Please delete this sheet and remake it.")
+            GoTo Footer
+        End If
     
     Call RemoveRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange, ActivityDelRange)
-    Call RecordsPullAttendance(ActivitySheet, ActivityNameRange, LabelCell)
-    Call SaveActivity(ActivitySheet, RecordsSheet, LabelCell)
+    
+    'Repull attendance if there are students left
+    Set ActivityTable = ActivitySheet.ListObjects(1)
+    Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
+        If ActivityNameRange Is Nothing Then
+            'Clear from the Records and Report if no students remain
+            Call RemoveRecordsActivity(RecordsSheet, LabelCell) 'Removes from both
+            
+            GoTo Footer
+        End If
+
+    Call ActivityPullAttendence(ActivitySheet, ActivityNameRange, LabelCell)
+    
+    'Retabulate
+    Call ActivitySave(ActivitySheet, RecordsSheet, LabelCell)
     
 Footer:
 
 End Sub
 
-Sub RemoveFromRecords(RecordsSheet As Worksheet, RosterNameRange As Range, RosterDelRange As Range)
-'Called when students are removed from the Roster Page
-'Removes students from Records Sheet and any open activity sheets
-'Retabulates all activities on the Report Page
+Sub RemoveFromOpenActivity(DelRange As Range)
+'Small helper function that loops through all sheets in the workbook and passes to RemoveFromActivity
 
+    Dim ActivitySheet As Worksheet
+    Dim ActivityTable As ListObject
+    
+    For Each ActivitySheet In ThisWorkbook.Sheets
+        If Not ActivitySheet.Range("A1").Value = "Practice" Then
+            GoTo NextSheet
+        End If
+        
+        Call RemoveFromActivity(ActivitySheet, DelRange)
+NextSheet:
+    Next ActivitySheet
+
+Footer:
+
+End Sub
+
+Sub RemoveFromRecords(RosterSheet As Worksheet, RosterDelRange As Range)
+'Deletes passed students on the Records page
+'Removes student from the roster and any open activity sheet
+'Does NOT export, that should happen in a parent sub
+'Retabulates activities
+    
+    Dim RecordsSheet As Worksheet
     Dim ReportSheet As Worksheet
     Dim RecordsNameRange As Range
     Dim RecordsDelRange As Range
-    Dim RecordsLabelRange As Range
-    Dim RecordsFullNameRange As Range
-    Dim ActivityNameRange As Range
-    Dim ActivityDelRange As Range
+    Dim RecordsRange As Range
+    Dim ReportLabelRange As Range
+    Dim c As Range
     Dim i As Long
-    Dim ReportTable As ListObject
+    Dim LabelString As String
+    Dim RosterTable As ListObject
+    Dim LabelArray As Variant
     
     Set ReportSheet = Worksheets("Report Page")
+    Set RecordsSheet = Worksheets("Records Page")
+    Set RecordsRange = FindRecordsRange(RecordsSheet)
+    Set RosterTable = RosterSheet.ListObjects(1)
     
-    'Check if there are students or activities on the Records Sheet
+    'Ensure that there are students to remove
     i = CheckRecords(RecordsSheet)
+        If i = 2 Or i = 4 Then 'No students
+            GoTo Footer
+        End If
     
-    If i = 2 Or i = 4 Then 'No students, nothing to delete
-        GoTo Footer
-    End If
-    
-    Call UnprotectSheet(RecordsSheet)
-    
-    'Define ranges to search and delete on the RecordsSheet
+    'Define the range of names and match
     Set RecordsNameRange = FindRecordsName(RecordsSheet)
-    Set RecordsFullNameRange = RecordsNameRange.Resize(RecordsNameRange.Rows.Count, 2)
     Set RecordsDelRange = FindName(RosterDelRange, RecordsNameRange)
+        If RecordsDelRange Is Nothing Then
+            GoTo Footer
+        End If
     
-    If RecordsDelRange Is Nothing Then 'This shouldn't be able to happen
-        GoTo Footer
-    End If
-
-    Call RemoveRows(RecordsSheet, RecordsFullNameRange.EntireRow, RecordsNameRange, RecordsDelRange)
-
+    'Loop through any open Activity Sheet and remove students
+    'Call RemoveFromOpenActivity(RecordsDelRange) 'This retabulates the activities
+    
+    'Remove from the RosterSheet
+    'Call RemoveRows(RosterSheet, RosterTable.DataBodyRange, RosterTable.ListColumns("First").DataBodyRange, RosterDelRange)
+    
+    'Remove from the RecordsSheet
+    Call RemoveRows(RecordsSheet, RecordsRange, RecordsNameRange, RecordsDelRange)
+    
+    'Check what's on the report
+    i = CheckReport(ReportSheet)
+        If Not i < 3 Then 'No activities tabulated
+            GoTo Footer
+        End If
+    
+    'Grab activities currently on the report
+    Set ReportLabelRange = FindReportLabel(ReportSheet)
+    
+    ReDim LabelArray(1 To ReportLabelRange.Cells.Count)
+    i = 1
+    
+    For Each c In ReportLabelRange
+        LabelArray(i) = c.Value
+    
+        i = i + 1
+    Next c
+    
+    'Clear the report and retabulate activities
+    Call ReportClear
+    Call TabulateReportTotals
+    
+    For i = 1 To UBound(LabelArray)
+        LabelString = LabelArray(i)
+        
+        Set c = FindRecordsLabel(RecordsSheet, , LabelString)
+            If c Is Nothing Then
+                GoTo NextLabel
+            End If
+        
+        Call TabulateActivity(c)
+NextLabel:
+    Next i
+    
 Footer:
 
 End Sub
@@ -97,6 +237,7 @@ Sub RemoveFromReport(DelRange As Range)
 'DelRange should be cells containing labels, so this is different from the button to remove rows that looks for checks
 
     Dim ReportSheet As Worksheet
+    Dim NudgeDelRange As Range
     Dim ReportDelRange As Range
     Dim ReportLabelRange As Range
     Dim c As Range
@@ -107,162 +248,220 @@ Sub RemoveFromReport(DelRange As Range)
     Set ReportTable = ReportSheet.ListObjects(1)
     
     'Check that there's a table with more than 2 rows
-    If CheckTable(ReportSheet) > 2 Then
-        GoTo Footer
-    ElseIf ReportTable.ListRows < 2 Then
+    If CheckReport(ReportSheet) > 2 Then
         GoTo Footer
     End If
     
     Call UnprotectSheet(ReportSheet)
     
-    'Make a range to remove
+    'If we're already on the Report, we don't need to search
+    If DelRange.Worksheet.Name = "Report Page" Then
+        Set c = DelRange
+        Set ReportDelRange = NudgeToHeader(ReportSheet, c, "Label")
+        
+        GoTo RemoveActivities
+    End If
+    
+    'If called from a different sheet, make a range to remove
     For Each c In DelRange
-        Set d = FindReportLabel(ReportSheet, c)
+        Set d = FindReportLabel(ReportSheet, c.Value)
         
         If Not d Is Nothing Then
             Set ReportDelRange = BuildRange(c, ReportDelRange)
         End If
     Next c
     
+RemoveActivities:
     If ReportDelRange Is Nothing Then
         GoTo Footer
     End If
+
+    'Pass to remove. Don't pass the totals row so it isn't sorted
+    Set c = FindReportLabel(ReportSheet)
+        If c Is Nothing Then
+            GoTo Footer
+        End If
     
-    'Pass to remove
-    Set ReportLabelRange = FindReportLabel(ReportSheet)
+    If ReportTable.Range.Rows.Count > 3 Then
+        Set ReportLabelRange = c.Resize(c.Rows.Count - 1, c.Columns.Count).Offset(1, 0) 'Need at least two rows
+        
+        If ReportLabelRange Is Nothing Then
+            GoTo Footer
+        End If
+    Else
+        Set ReportLabelRange = c
+    End If
     
-    Call RemoveRows(ReportSheet, ReportTable.DataBodyRange, ReportLabelRange, ReportDelRange)
+    Set c = ReportTable.DataBodyRange
+    Set d = c.Resize(c.Rows.Count - 1, c.Columns.Count).Offset(1, 0)
+        If d Is Nothing Then
+            GoTo Footer
+        End If
+        
+    Call RemoveRows(ReportSheet, d, ReportLabelRange, ReportDelRange)
 
 Footer:
 
 End Sub
 
-Function RemoveFromRoster(DelRange As Range) As Long
-'Prompts confirm deletion and export Attendance, removes from records and open activity sheets, retabulates
-'Exports based on passed long
-'Passing "Clear" Will wipe everything instead of deleting some rows
-'Returns 1 for removing
-'Returns 2 for removing and exporting
-'Returns 0 for aborting
-
+Function RemoveFromRoster(RosterSheet As Worksheet, DelRange As Range, Optional PromptString As String) As Long
+'Called when a student is removed from the RosterSheet
+'Removes the student from any open Activity sheets, the Records sheet, the Roster sheet, then retabulates
+'Checking for a table with rows should be done in a previous sub
+'Passing "Prompt" shows the delete and export prompts
+'Returns 1 if successful
+        
     Dim OldBook As Workbook
     Dim NewBook As Workbook
-    Dim RosterSheet As Worksheet
-    Dim RecordsSheet As Worksheet
-    Dim ReportSheet As Worksheet
-    Dim ActivitySheet As Worksheet
     Dim RosterNameRange As Range
-    Dim RecordsNameRange As Range
-    Dim RecordsDelRange As Range
     Dim i As Long
-    Dim DelConfirm As Long
-    Dim ExportConfirm As Long
     Dim RosterTable As ListObject
     Dim DeleteAll As Boolean
     
     RemoveFromRoster = 0
+    DeleteAll = False
     
-    Set RosterSheet = Worksheets("Roster Page")
-    Set RecordsSheet = Worksheets("Records Page")
-    Set ReportSheet = Worksheets("Report Page")
-    
-    'Make sure there's a table, that there's at least one student, and at least one checked student
-    If CheckTable(RosterSheet) > 1 Then
-        GoTo Footer
-    End If
-    
-    'Confirm Deletion
-    DelConfirm = MsgBox("This will remove the selected students from any recorded activities. Do you wish to continue?", vbQuestion + vbYesNo + vbDefaultButton2)
-    If DelConfirm <> vbYes Then
-        GoTo Footer
-    End If
-    
+    Set OldBook = ThisWorkbook
     Set RosterTable = RosterSheet.ListObjects(1)
-    Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange 'One column to the right of the checks
-
-    'If the entire column is being deleted
-    If DelRange.Cells.Count = RosterNameRange.Cells.Count Then
+    Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
+    
+    'If this gets passed after the range has been deleted
+    If DelRange Is Nothing Then
+        GoTo Footer
+    'If all students are being removed, we can skip some steps
+    ElseIf DelRange.Offset(0, 1).Address = RosterNameRange.Address Then
         DeleteAll = True
-    Else
-        DeleteAll = False
     End If
+    
+    If PromptString <> "Prompt" Then
+        GoTo ActivityRemove
+    End If
+    
+    'Prompt to confirm deletion
+    i = PromptRemoveRoster(DelRange)
+        If i <> 1 Then
+            GoTo Footer
+        End If
+    
+    'Prompt to confirm exporting
+    i = PromptExport(DelRange)
+        If i <> 1 Then
+            GoTo ActivityRemove
+        End If
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.EnableEvents = False
+    
+    'Generate a new book
+    Set NewBook = ExportFromRoster(DelRange)
+        If NewBook Is Nothing Then
+            GoTo ActivityRemove
+        End If
         
-    'Define the range of students to remove. Skip forward if there are no matches
-    Set RecordsNameRange = FindRecordsName(RecordsSheet)
-    Set RecordsDelRange = FindName(RecordsNameRange, DelRange)
-    
-    If RecordsDelRange Is Nothing Then
-        GoTo SkipRecords
+    'Save and close the new book
+    If ExportLocalSave(OldBook, NewBook) > 0 Then
+        On Error Resume Next
+        NewBook.Close savechanges:=False
+        On Error GoTo 0
     End If
-        
-    'Confirm exporting student Attendance. Only display if there are both students and activities on the RecordsSheet
-    i = CheckRecords(RecordsSheet)
     
-    If i = 2 Or i = 4 Then 'No students on RecordsSheet
-        GoTo SkipRecords
-    ElseIf i = 1 Then 'Students and activities on RecordsSheet
-        ExportConfirm = MsgBox("Do you wish to save a copy of these students' attendance before removing them?", vbQuestion + vbYesNo + vbDefaultButton2)
-    End If
-
-    'Export identified students
-    If ExportConfirm <> vbYes Then
-        GoTo SkipExport
-    End If
-
-    Set OldBook = ActiveWorkbook
-    Set NewBook = MakeNewBook(RecordsSheet, ReportSheet, RosterSheet, DelRange)
-
-    Call SaveNewBook(OldBook, NewBook)
-    OldBook.Activate
-    
-    RemoveFromRoster = RemoveFromRoster + 1
-    
-SkipExport:
-    'Delete students from records and retabulate
-    Call RemoveFromRecords(RecordsSheet, RecordsNameRange, RecordsDelRange)
-    
-SkipRecords:
-    'If we are clearing the roster entirely
+ActivityRemove:
+    'Loop through and remove from any open activity sheets. Empty sheets are deleted and the activity deleted from the Records and Report
+    Call RemoveFromOpenActivity(DelRange)
+      
+    'Wipe the Records and Report if everyone is deleted
     If DeleteAll = True Then
-        'Clear report and records sheets
-        Call ClearRecords 'This can be run without any students
-        Call ClearReport
+        Call RecordsClear
+        Call ReportClear
+        Call RosterClearButton
         
-        'Delete any open activity sheet
-        For Each ActivitySheet In ActiveWorkbook.Sheets
-            If ActivitySheet.Range("A1").Value = "Practice" Then
-                ActivitySheet.Delete
-            End If
-        Next ActivitySheet
-        
-        'Delete content and formats starting below the header
-        Call ClearSheet(RosterSheet, "No", RosterTable.HeaderRowRange(1, 1).Offset(1, 0))
-    Else
-        'Otherwise, look through each sheet and remove matching students
-        For Each ActivitySheet In ThisWorkbook.Sheets
-            If ActivitySheet.Range("A1").Value = "Practice" Then
-                Call RemoveFromActivity(ActivitySheet, DelRange.Offset) 'Includes saving the activity
-            End If
-        Next ActivitySheet
-        
-        'Delete students from the RosterSheet and parse
-        Call RemoveRows(RosterSheet, RosterTable.DataBodyRange, RosterNameRange, DelRange)
-        Call RosterParseButton
-        Call RetabulateReport
-        
+        GoTo Footer
     End If
-        
-    RemoveFromRoster = RemoveFromRoster + 1
-        
+      
+    'Remove from the Records sheet. This retabulates activities as well
+    Call RemoveFromRecords(RosterSheet, DelRange)
+
+    'Finally, delete the students from the Roster and retabulate totals
+    Call RemoveRows(RosterSheet, RosterTable.DataBodyRange, RosterNameRange, DelRange)
+    Call TabulateReportTotals
+    
 Footer:
 
 End Function
 
-Sub RemoveRows(TargetSheet As Worksheet, SearchRange As Range, SortRange As Range, DelRange As Range)
-'Sorts SearchRange and deletes everything in DelRange
-'Needs to be passed the full range to sort, i.e. a table DataBodyRange
+Function RemoveNonNumeric(FullString As String) As String 'or as long, if you prefer
+    Dim re As Object
+    
+    Set re = CreateObject("VBScript.Regexp")
+    With re
+        .Pattern = "[^.0-9]"
+        .Global = True
+        RemoveNonNumeric = .Replace(FullString, "")
+    End With
+End Function
 
-    'Dim SortRange As Range
+Sub RemoveRecordsActivity(RecordsSheet As Worksheet, LabelCell As Range)
+'Deletes an activity from the Records sheet and Report sheet, if present
+'Deletes any open activity sheets of the activity being removed
+'Loops through passed range and deletes the column
+
+    Dim ReportSheet As Worksheet
+    Dim ActivitySheet As Worksheet
+    Dim RecordsDelRange As Range
+    Dim ReportDelRange As Range
+    Dim LabelString As String
+    
+    Set ReportSheet = Worksheets("Report Page")
+    
+    'Make sure there's something to delete
+    If LabelCell Is Nothing Then
+        GoTo Footer
+    ElseIf CheckRecords(RecordsSheet) > 2 Then
+        GoTo Footer
+    End If
+
+    'Find the column we want on the RecordsSheet and delete
+    LabelString = LabelCell.Value
+        If Not Len(LabelString) > 0 Then
+            GoTo Footer
+        End If
+    
+    Set RecordsDelRange = FindRecordsLabel(RecordsSheet, LabelCell)
+        If RecordsDelRange Is Nothing Then
+            GoTo RemoveReportActivity
+        End If
+        
+    RecordsDelRange.EntireColumn.Delete
+    
+RemoveReportActivity:
+    'Pass to remove from the Report Sheet
+    Set ReportDelRange = FindReportLabel(ReportSheet, LabelString)
+        If ReportDelRange Is Nothing Then
+            GoTo RemoveOpenSheet
+        End If
+
+    Call RemoveFromReport(ReportDelRange)
+
+RemoveOpenSheet:
+    'Loop through ActivitySheets and delete if there's a match
+    Set ActivitySheet = FindSheet(LabelString)
+        If ActivitySheet Is Nothing Then
+            GoTo Footer
+        End If
+    
+    ActivitySheet.Delete
+
+Footer:
+
+End Sub
+
+Sub RemoveRows(TargetSheet As Worksheet, SearchRange As Range, SortRange As Range, DelRange As Range)
+'SearchRange is the bound of what to delete, done to avoid some errors with tables
+'SortRange is the column being sorted, usually "Select" or "First"
+'Del range are the cells in SortRange to delete. The row is removed
+'Needs to be passed the SearchRange to sort, i.e. a table DataBodyRange
+
     Dim SortDelRange As Range
     Dim c As Range
     Dim d As Range
@@ -272,10 +471,15 @@ Sub RemoveRows(TargetSheet As Worksheet, SearchRange As Range, SortRange As Rang
     
     Call UnprotectSheet(TargetSheet)
 
-    'I don't think this is needed since I'm defining a number of cells to be deleted rather than the entire row. Need to test
+    'I don't think removing that table is needed since I'm defining a number of cells to be deleted rather than the entire row. Need to test
     'Remove any table and formatting
     If TargetSheet.ListObjects.Count > 0 Then
         HasTable = True
+        
+        'Nudge to the select column
+        Set SortRange = NudgeToHeader(TargetSheet, SortRange, "Select")
+        Set DelRange = NudgeToHeader(TargetSheet, DelRange, "Select")
+        
         Call RemoveTable(TargetSheet)
     End If
     
@@ -287,7 +491,7 @@ Sub RemoveRows(TargetSheet As Worksheet, SearchRange As Range, SortRange As Rang
     'Sort by color
     With TargetSheet.Sort
         .SortFields.Clear
-        .SortFields.Add2(SortRange, xlSortOnCellColor, xlAscending, , xlSortNormal).SortOnValue.Color = RGB(255, 0, 0)
+        .SortFields.Add2(SortRange.Offset, xlSortOnCellColor, xlAscending, , xlSortNormal).SortOnValue.Color = RGB(255, 0, 0)
         .SetRange SearchRange
         .Header = xlGuess
         .MatchCase = False
@@ -325,13 +529,32 @@ Sub RemoveRows(TargetSheet As Worksheet, SearchRange As Range, SortRange As Rang
     End If
     
     If TargetSheet.Name = "Report Page" Then
-        Set TargetTable = CreateReportTable
-        Call FormatReportTable(TargetSheet, TargetTable)
+        Set TargetTable = MakeReportTable
+        Call TableFormatReport(TargetSheet, TargetTable)
     Else
-        Set TargetTable = CreateTable(TargetSheet)
-        Call FormatTable(TargetSheet, TargetTable)
+        Set TargetTable = MakeTable(TargetSheet)
+        Call TableFormat(TargetSheet, TargetTable)
     End If
     
 Footer:
 
 End Sub
+
+Sub RemoveTable(TargetSheet As Worksheet)
+'Unlists all table objects and removes formatting
+
+    Dim OldTableRange As Range
+    Dim OldTable As ListObject
+    
+    Call UnprotectSheet(TargetSheet)
+    
+    For Each OldTable In TargetSheet.ListObjects
+        Set OldTableRange = OldTable.Range
+        
+        OldTable.Unlist
+        OldTableRange.FormatConditions.Delete
+        OldTableRange.Borders.LineStyle = Excel.XlLineStyle.xlLineStyleNone
+    Next OldTable
+
+End Sub
+

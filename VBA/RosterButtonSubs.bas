@@ -1,7 +1,7 @@
 Attribute VB_Name = "RosterButtonSubs"
 Option Explicit
 
-Sub OpenAddStudentsButton()
+Sub RosterAddStudentsFormButton()
 'Adds selected students to a saved activity
 
     Dim RosterSheet As Worksheet
@@ -43,7 +43,7 @@ Footer:
 
 End Sub
 
-Sub OpenLoadActivityButton()
+Sub RosterLoadActivityFormButton()
 'Checks to see if there are any saved activities and opens the load activity form
 
     Dim RecordsSheet As Worksheet
@@ -65,7 +65,7 @@ Footer:
 
 End Sub
 
-Sub OpenNewActivityButton()
+Sub RosterNewActivityFormButton()
 'Opens form to create a new activity. Does not require any selected students
 
     Dim RosterSheet As Worksheet
@@ -97,70 +97,21 @@ End Sub
 Sub RosterClearButton()
 'Delete everything, reset columns, clear records
     
-    Dim OldBook As Workbook
     Dim RosterSheet As Worksheet
-    Dim RecordsSheet As Worksheet
-    Dim ActivitySheet As Worksheet
-    Dim RecordsLabelRange As Range
-    Dim NameRange As Range
-    Dim DelCell As Range
-    Dim ColNames() As Variant
-    Dim RosterTable As ListObject
     
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    Set OldBook = ThisWorkbook
     Set RosterSheet = Worksheets("Roster Page")
-    Set RecordsSheet = Worksheets("Records Page")
-    
-    'Skip if there's no table
-    If RosterSheet.ListObjects.Count = 0 Then
-        GoTo Footer
-    End If
-    
-    'Skip if it's an empty table
-    Set RosterTable = RosterSheet.ListObjects(1)
-    Set NameRange = RosterTable.ListColumns("First").DataBodyRange
-    
-    If NameRange Is Nothing Then
-        GoTo Footer
-    End If
 
-    'Pass to the RemoveSelected sub, which already handles takings things off the Records sheet and exporting
     Call UnprotectSheet(RosterSheet)
-    NameRange.Offset(0, -1).Value = "a"
-    If RemoveFromRoster(NameRange) = 0 Then
-        GoTo Footer
-    End If
     
-    'Clear everything on the Records and Report sheets
-    Call ClearRecords
-    Call ClearReportButton
+    'Show pompts for deleting and exporting
+    Call RosterClear(RosterSheet, "Prompt")
     
-    'Turn everything back off
-    Application.EnableEvents = False
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-    
-    'Delete the roster table and clear formatting
-    Set DelCell = RosterSheet.Range("A6") 'Harded coded in cases where the table has been unlisted, the column names changed, etc.
-    Call ClearSheet(RosterSheet, 1, DelCell)
-    
-    'Reset columns
-    ColNames = Application.Transpose(ActiveWorkbook.Names("ColumnNamesList").RefersToRange.Value)
-    Call ResetTableHeaders(RosterSheet, DelCell, ColNames)
-    
-    'Remove green around Parse button
-    RosterSheet.Range("A1:C3").Interior.Pattern = xlNone
-    
-    'Delete any activity sheets
-    For Each ActivitySheet In ActiveWorkbook.Sheets
-        If ActivitySheet.Range("A1") = "Practice" Then
-            ActivitySheet.Delete
-        End If
-    Next ActivitySheet
+    'Remake the table
+    Call MakeRosterTable(RosterSheet)
     
 Footer:
     Call ResetProtection
@@ -174,118 +125,152 @@ End Sub
 Sub RosterParseButton()
 'Read in the roster, table with conditional formatting, Marlett boxes, push to the ReportSheet
 
+    Dim NewBook As Workbook
+    Dim OldBook As Workbook
     Dim RosterSheet As Worksheet
     Dim RecordsSheet As Worksheet
     Dim RosterNameRange As Range
-    Dim RosterTableRange As Range
+    Dim RecordsDelRange As Range
     Dim RecordsNameRange As Range
+    Dim RecordsRange As Range
     Dim DelRange As Range
-    Dim BoxRange As Range
+    Dim CopyRange As Range
+    Dim PasteRange As Range
     Dim c As Range
     Dim d As Range
+    Dim i As Long
+    Dim j As Long
+    Dim DelConfirm As Long
+    Dim ExportConfirm As Long
     Dim NumDuplicate As Long
-    Dim ColNames() As Variant
+    Dim NumAdded As Long
+    Dim ConfirmMessage As String
     Dim RosterTable As ListObject
-    
+
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
-    
+
+    Set OldBook = ThisWorkbook
     Set RosterSheet = Worksheets("Roster Page")
     Set RecordsSheet = Worksheets("Records Page")
-    Set c = RosterSheet.Range("A6")
     
-    Call UnprotectSheet(RosterSheet)
+    'Remake the Roster table to include new students, if any
+    Set RosterTable = MakeRosterTable(RosterSheet)
     
-    'Find the range for the new table, break if there is nothing but the header
-    Set RosterTableRange = FindTableRange(RosterSheet)
-    
-    If Not RosterTableRange.Rows.Count > 1 Then
-        'Reset the headers
-        ColNames = Application.Transpose(ActiveWorkbook.Names("ColumnNamesList").RefersToRange.Value)
-        Call ResetTableHeaders(RosterSheet, c, ColNames)
-        GoTo Footer
-    End If
-
-    'Make sure there are no filters on the table
-    If RosterSheet.AutoFilterMode = True Then
-        RosterSheet.AutoFilterMode = False
-    End If
-    
-    'Remove the existing table and formatting
-    Call RemoveTable(RosterSheet)
-    
-    'Headers remain unlocked for sorting and filtering. Headers recorded in a list
-    ColNames = Application.Transpose(ActiveWorkbook.Names("ColumnNamesList").RefersToRange.Value)
-    Call ResetTableHeaders(RosterSheet, c, ColNames) 'This preserves any extra columns added
-    
-    'Make a table called "RosterTable" so that any added students are included and any blank rows are removed
-    Set RosterTable = CreateTable(RosterSheet, "RosterTable", RosterTableRange)
-    
-    'Identify and remove duplicate students and blank rows
-    Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
-    Set c = FindDuplicate(RosterNameRange)
-    Set d = FindBlanks(RosterSheet, RosterNameRange)
-
-    If Not c Is Nothing Then
-        NumDuplicate = c.Cells.Count
-        Set DelRange = c
-    End If
-    
-    If Not d Is Nothing Then
-        If DelRange Is Nothing Then
-            Set DelRange = d
-        Else
-            Set DelRange = Union(DelRange, d)
+    'See if we have any students. Break if we don't
+    i = CheckTable(RosterSheet)
+        If i > 2 Then
+            GoTo Footer
         End If
+    
+    'Remove duplicates empty spaces
+    NumDuplicate = RemoveBadRows(RosterSheet, RosterTable.DataBodyRange, RosterTable.ListColumns("First").DataBodyRange)
+    
+    Set RosterTable = RosterSheet.ListObjects(1)
+    Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
+    
+    'Check for students on the Records but not the Roster
+    j = CheckRecords(RecordsSheet)
+        If j = 2 Or j = 4 Then
+            GoTo CopyStudents
+        End If
+    
+    Set RecordsNameRange = FindRecordsName(RecordsSheet)
+    Set RecordsDelRange = FindUnique(RecordsNameRange, RosterNameRange)
+        If RecordsDelRange Is Nothing Then
+            GoTo CopyStudents
+        End If
+    
+    If PromptRemoveRecords(RecordsDelRange) <> 1 Then
+        GoTo RemoveExtra
+    End If
+    
+    'Generate a new book
+    Set NewBook = ExportFromRecords(RecordsDelRange)
+        If NewBook Is Nothing Then
+            GoTo RemoveExtra
+        End If
+        
+    'Save and close the new book
+    If ExportLocalSave(OldBook, NewBook) > 0 Then
+        NewBook.Close savechanges:=False
+    End If
+    
+RemoveExtra:
+    'Remove the extra students
+    Set RecordsRange = FindRecordsRange(RecordsSheet)
+    
+    Call RemoveRows(RecordsSheet, RecordsRange, RecordsNameRange, RecordsDelRange)
+    
+CopyStudents:
+    'If everyone was deleted, clear the records and report, add everyone
+    i = CheckRecords(RecordsSheet)
+    
+    If i = 2 Or i = 4 Then
+        Call RecordsClear
+        Call ReportClear
+        
+        Set CopyRange = RosterNameRange
+    Else
+        Set RecordsNameRange = FindRecordsName(RecordsSheet)
+        Set CopyRange = FindUnique(RosterNameRange, RecordsNameRange)
     End If
 
+    'No students to copy
+    If CopyRange Is Nothing Then
+        GoTo RetabulateReport
+    End If
+    
+    NumAdded = CopyNames(CopyRange).Cells.Count
+    
+    'Clean up the Records name list
+    Set RecordsNameRange = FindRecordsName(RecordsSheet) 'Redefine since it may be longer or shorter
+    Set RecordsRange = FindRecordsRange(RecordsSheet)
+    Set RecordsDelRange = Nothing
+    
+    Set c = FindDuplicate(RecordsNameRange)
+        If Not c Is Nothing Then
+            Set RecordsDelRange = c
+        End If
+
+    Set d = FindBlanks(RecordsNameRange)
+        If Not d Is Nothing Then
+            Set RecordsDelRange = BuildRange(d, RecordsDelRange)
+        End If
+    
     If Not DelRange Is Nothing Then
-        Call RemoveRows(RosterSheet, RosterTable.DataBodyRange, RosterNameRange, DelRange)
-        Set RosterTable = RosterSheet.ListObjects(1)
+        Call RemoveRows(RecordsSheet, RecordsRange, RecordsNameRange, RecordsDelRange) 'RemoveBadRows requires a table
     End If
     
-    'Add Marlett boxes
-    Set BoxRange = RosterTable.ListColumns("Select").DataBodyRange
-    Call AddMarlettBox(BoxRange)
-    
-    'Format if it hasn't been done already
-    Set c = FindTableHeader(RosterSheet, "Gender").Offset(1, 0) 'Could be ethnicity, grade, major, etc. instead
-    
-    If c.FormatConditions.Count < 2 Then 'Flag when blank, flag if there's a bad value
-        Call FormatTable(RosterSheet, RosterTable) 'This is one of the bottlenecks for speed in my code, so only run it if we need to
-    End If
-    
-    'Push names to records and report sheets
-    Call CopyToRecords(RecordsSheet, RosterSheet, RosterNameRange)
+RetabulateReport:
+    'Tabulate the totals and push to the ReportTable, retabulate activities already listed on the Report
     Call TabulateReportTotals
     
-    'See if the RosterSheet and ReportSheet have the same number of students. This shouldn't happen
-    Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
-    Set RecordsNameRange = FindRecordsName(RecordsSheet)
-        
-    If RosterNameRange.Rows.Count = RecordsNameRange.Rows.Count Then
-        RosterSheet.Range("A1:C3").Interior.Pattern = xlNone
-    Else
-        'Set c = FindUnique(RecordsNameRange, RosterNameRange) 'Need to account for if the Roster list is short
-        RosterSheet.Range("A1:C3").Interior.ColorIndex = 43 'May want to change this to checkling the two list of names again
+    If CheckRecords(RecordsSheet) < 3 Then
+        Call TabulateListedActivities
     End If
-    
-Footer:
-    'Reprotect
-    Call ResetProtection
+
+    'Show students added and duplicates removed
+    If NumAdded > 0 Then
+        ConfirmMessage = NumAdded & " students added."
+    End If
     
     If NumDuplicate > 0 Then
-        MsgBox (NumDuplicate & " duplicates removed.")
+        If Len(ConfirmMessage) > 0 Then
+            ConfirmMessage = ConfirmMessage & vbCr
+        End If
+        
+        ConfirmMessage = ConfirmMessage & NumDuplicate & " duplicates removed"
     End If
     
+    If Len(ConfirmMessage) > 0 Then
+        MsgBox (ConfirmMessage)
+    End If
+
+Footer:
     Application.EnableEvents = True
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
-    
+
 End Sub
-
-
-
-
-

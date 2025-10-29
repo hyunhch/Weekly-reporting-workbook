@@ -88,6 +88,46 @@ Function CheckRecords(RecordsSheet As Worksheet) As Long
 
 End Function
 
+Function CheckReport(ReportSheet As Worksheet) As Long
+'Checks that there are student totals and activities
+    '1 - Totals, activities, and check
+    '2 - Totals and at least one activities
+    '3 - Totals but no activities
+    '4 - No table
+    
+    Dim c As Range
+    Dim i As Long
+    Dim ReportTable As ListObject
+    
+    'Is there a table. There always should be
+    If ReportSheet.ListObjects.Count < 1 Then
+        i = 4
+        GoTo Footer
+    End If
+    
+    'If there are any totals
+    Set ReportTable = ReportSheet.ListObjects(1) 'There will always be at least two rows
+    
+    If ReportTable.Range.Rows.Count = 2 Then
+        i = 3
+        GoTo Footer
+    End If
+    
+    'If there are any activities
+    If ReportTable.Range.Rows.Count > 2 Then
+        i = 2
+    End If
+    
+    'If there are any checked rows
+    If IsChecked(ReportTable.ListColumns("Select").DataBodyRange) Then
+        i = 1
+    End If
+
+Footer:
+    CheckReport = i
+
+End Function
+
 Function CheckTable(TargetSheet As Worksheet) As Long
 'Checks that there is a table, that there is at least one list row, and that there is at least one row checked
 'Report sheet will need an additional check since there are two rows at the top
@@ -110,6 +150,7 @@ Function CheckTable(TargetSheet As Worksheet) As Long
     End If
     
     If TargetSheet.Name = "Report Page" Then 'Two rows at the top for the ReportSheet
+        Err.Raise vbObjectError + 513, , "Wrong function"
         j = 2
     Else
         j = 1

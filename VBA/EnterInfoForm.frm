@@ -18,7 +18,6 @@ Option Explicit
 Private Sub EnterInfoNoButton_Click()
 
     EnterInfoForm.Hide
-    ActiveWorkbook.Close SaveChanges:=False
     
 End Sub
 
@@ -90,16 +89,14 @@ End Sub
 
 Private Sub UserForm_Activate()
 
+    Dim c As Range
+
     EnterInfoForm.Height = 191
     EnterInfoForm.Width = 242
-
-End Sub
-
-
-Private Sub UserForm_Initialize()
-'To populate the Cover Page, triggered after the program is selected
-
-    Dim c As Range
+    
+    Me.EnterInfoNameBox.Value = ""
+    Me.EnterInfoDateBox.Value = ""
+    Me.EnterInfoCenterComboBox.Clear
     
     For Each c In Range("CentersList")
         Me.EnterInfoCenterComboBox.AddItem c.Value

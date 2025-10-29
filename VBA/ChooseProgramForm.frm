@@ -19,17 +19,14 @@ Private Sub ChooseProgramNoButton_Click()
     
     ChooseProgramForm.Hide
     
-    If Application.Workbooks.Count = 1 Then
-        Application.Quit
-    Else
-        ActiveWorkbook.Close SaveChanges:=False
-    End If
+Footer:
 
 End Sub
 
 Private Sub ChooseProgramYesButton_Click()
 'Set up worksheet for selected program
 
+    Dim CoverSheet As Worksheet
     Dim SelectionString As String
     Dim ProgramString As String
     Dim i As Long
@@ -38,9 +35,10 @@ Private Sub ChooseProgramYesButton_Click()
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
+    Set CoverSheet = Worksheets("Cover Page")
+    
     'Make sure an activity has been selected
     If ChooseProgramListBox.ListIndex = -1 Then
-        MsgBox ("Please select an activity")
         GoTo Footer
     End If
     
@@ -58,6 +56,9 @@ Private Sub ChooseProgramYesButton_Click()
     ElseIf SelectionString = "MESA University" Then
         ProgramString = "University Ref"
     End If
+    
+    'Delete the button on the cover page
+    CoverSheet.Buttons.Delete
     
     'Pass to the setup sub and close the form
     Call ChooseProgram(ProgramString)

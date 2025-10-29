@@ -19,29 +19,63 @@ Private Sub Image1_BeforeDragOver(ByVal Cancel As MSForms.ReturnBoolean, ByVal D
 
 End Sub
 
+Private Sub CommandButton1_Click()
+
+    Dim i As Long
+    Dim InfoArray As Variant
+    
+    InfoArray = GetFormInfo(NewActivityForm)
+    
+    For i = 1 To UBound(InfoArray, 2)
+    
+        Debug.Print InfoArray(1, i) & " - " & InfoArray(2, i) & " - " & InfoArray(3, i)
+    
+    Next i
+
+
+End Sub
+
 Private Sub NewActivityCancelButton_Click()
 
     NewActivityForm.Hide
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
 
 End Sub
 
 Private Sub NewActivityConfirmButton_Click()
 'Create a new sheet with the information given
 'Checking for students and checked students comes previously
+'Passes a 3xi array
+    '(1, i) - Header
+    '(2, i) - Value
+    '(3, i) - Address
 
     Dim RecordsSheet As Worksheet
     Dim MatchCell As Range
-    Dim TempCell As Range
+    Dim i As Long
     Dim PracticeString As String
     Dim CategoryString As String
     Dim DateString As String
     Dim LabelString As String
     Dim DescriptionString As String
-    Dim InfoArary() As Variant
+    Dim HeaderArray As Variant
+    Dim AddressArray As Variant
+    Dim PassArray As Variant
     
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+    
+    Set RecordsSheet = Worksheets("Records Page")
+    
+    'Make sure a practice is selected
+    If NewActivitySelectListBox.ListIndex = -1 Then
+        MsgBox ("Please select a practice")
+        GoTo Footer
+    End If
     
     'First check that all four fields on the form have a value
     PracticeString = NewActivitySelectListBox.Value
@@ -64,12 +98,9 @@ Private Sub NewActivityConfirmButton_Click()
     End If
         
     'Make sure the label is unique
-    Set RecordsSheet = Worksheets("Records Page")
-    Set TempCell = RecordsSheet.Range("B2")
+    LabelString = NewActivityLabelBox.Value
     
-    TempCell.Value = NewActivityLabelBox.Value
-    Set MatchCell = FindRecordsLabel(RecordsSheet, TempCell)
-    TempCell.ClearContents
+    Set MatchCell = FindRecordsLabel(RecordsSheet, , LabelString)
     
     'Function returns nothing if no match was found, the padding cell if there are not activities
     If Not MatchCell Is Nothing Then
@@ -79,29 +110,14 @@ Private Sub NewActivityConfirmButton_Click()
         End If
     End If
         
-    'Create the array to pass
-    ReDim InfoArray(1 To 5, 1 To 3)
-    
-    InfoArray(1, 1) = "Label"
-    InfoArray(2, 1) = "Practice"
-    InfoArray(3, 1) = "Category"
-    InfoArray(4, 1) = "Date"
-    InfoArray(5, 1) = "Description"
-    
-    InfoArray(1, 2) = "G1"
-    InfoArray(2, 2) = "A1"
-    InfoArray(3, 2) = "A2"
-    InfoArray(4, 2) = "A3"
-    InfoArray(5, 2) = "A4"
-    
-    InfoArray(1, 3) = LabelString
-    InfoArray(2, 3) = PracticeString
-    InfoArray(3, 3) = "" 'Will be overwritten
-    InfoArray(4, 3) = CDate(DateString)
-    InfoArray(5, 3) = DescriptionString
+    'Grab the headers and values
+    PassArray = GetFormInfo(NewActivityForm)
+        If IsEmpty(PassArray) Or Not IsArray(PassArray) Then
+            GoTo Footer
+        End If
         
     'Create a new sheet
-    Call NewActivitySheet(InfoArray)
+    Call ActivityNewSheet(PassArray)
 
     NewActivityForm.Hide
     
@@ -132,6 +148,48 @@ Private Sub NewActivityFilterBox_Change()
     
 End Sub
 
+Private Sub NewActivityLabelBox_Exit(ByVal Cancel As MSForms.ReturnBoolean)
+'Check for label length and invalid characters
+'Must be 31 characters or fewer, not contain : \ / ? * [ or ]
+
+    Dim i As Long
+    Dim LabelString As String
+    Dim InvalidArray As Variant
+    
+    Me.NewActivityLabelBox.BackColor = RGB(255, 255, 255)
+    
+    'If there is nothing, break
+    If Not Len(NewActivityLabelBox.Value) > 0 Then
+        GoTo Footer
+    End If
+    
+    'Check length
+    LabelString = NewActivityLabelBox.Value
+    
+    If Len(LabelString) > 31 Then
+        MsgBox ("Labels can only be 31 characters or shorter")
+        Me.NewActivityLabelBox.BackColor = RGB(255, 198, 198)
+        
+        GoTo Footer
+    End If
+    
+    'Check for invalid characters
+    InvalidArray = Split(": \ / ? * [ ]", " ")
+    
+    For i = LBound(InvalidArray) To UBound(InvalidArray)
+        If InStr(1, LabelString, InvalidArray(i)) > 0 Then
+            MsgBox ("Labels cannot use any of the following characters: " & vbCr _
+                & ": \ / ? * [ or ]")
+            Me.NewActivityLabelBox.BackColor = RGB(255, 198, 198)
+        
+            GoTo Footer
+        End If
+    Next i
+        
+Footer:
+
+End Sub
+
 Private Sub UserForm_Activate()
 'Clear anything in the date and description boxes when activated
 
@@ -159,5 +217,59 @@ Private Sub UserForm_Initialize()
     
 End Sub
 
+Private Function NewActivityGetInfo() As Variant
+'Returns a 2D array with the information used to create a new ActivitySheet
+    '(1, i) - header
+    '(2, i) - value
+    
+    Dim TempRange As Range
+    Dim c As Range
+    Dim i As Long
+    Dim LabelString As String
+    Dim PracticeString As String
+    Dim CategoryString As String
+    Dim DateString As String
+    Dim DescriptionString As String
+    Dim ReturnArray As Variant
 
+    'Grab the values for headers
+    Set TempRange = Range("ActivityHeadersList")
+        
+    ReDim ReturnArray(1 To 2, 1 To TempRange.Cells.Count)
+    
+    i = 1
+    For Each c In TempRange
+        ReturnArray(1, i) = c.Value
+    
+        i = i + 1
+    Next c
+    
+    'Read in the values from the userform
+    PracticeString = NewActivitySelectListBox.Value
+    DateString = NewActivityDateBox.Value
+    LabelString = NewActivityLabelBox.Value
+    DescriptionString = NewActivityDescriptionBox.Value
+    
+    'Find the category associated with the practice
+    Set TempRange = Range("ActivitiesList")
+    Set c = TempRange.Find(PracticeString, , xlValues, xlWhole)
+        If c Is Nothing Then
+            GoTo Footer
+        End If
+
+    CategoryString = c.Offset(0, -1).Value
+
+AddValues:
+    ReturnArray(2, 1) = LabelString
+    ReturnArray(2, 2) = PracticeString
+    ReturnArray(2, 3) = CategoryString
+    ReturnArray(2, 4) = CDate(DateString)
+    ReturnArray(2, 5) = DescriptionString
+
+    'Return
+    NewActivityGetInfo = ReturnArray
+
+Footer:
+
+End Function
 

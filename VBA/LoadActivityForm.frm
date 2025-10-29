@@ -36,11 +36,15 @@ Private Sub LoadActivityConfirmButton_Click()
     
     Dim RecordsSheet As Worksheet
     Dim ActivitySheet As Worksheet
+    Dim HeaderRefRange As Range
+    Dim LabelCell As Range
+    Dim c As Range
     Dim LabelString As String
     Dim PracticeString As String
     Dim DateString As String
     Dim DescriptionString As String
     Dim i As Long
+    Dim RowIndex As Long
     Dim InfoArray() As Variant
     
     Application.EnableEvents = False
@@ -49,60 +53,132 @@ Private Sub LoadActivityConfirmButton_Click()
 
     'Make sure an activity has been selected
     If LoadActivityListBox.ListIndex = -1 Then
-        'MsgBox ("Please select an activity")
         GoTo Footer
     End If
 
-    Set RecordsSheet = Worksheets("Records Page")
-
+    'Loop through
     For i = 0 To Me.LoadActivityListBox.ListCount - 1
-        If Me.LoadActivityListBox.Selected(i) Then
-            LabelString = Me.LoadActivityListBox.List(i, 0)
-            PracticeString = Me.LoadActivityListBox.List(i, 1)
-            DateString = Me.LoadActivityListBox.List(i, 2)
-            DescriptionString = Me.LoadActivityListBox.List(i, 3)
-            
-            'Check if the sheet is already open
-            Set ActivitySheet = FindSheet(LabelString)
-            
-            If Not ActivitySheet Is Nothing Then
-                ActivitySheet.Activate
-                GoTo NextActivity
-            End If
-            
-            'Create the array to pass
-            ReDim InfoArray(1 To 5, 1 To 3)
-            
-            InfoArray(1, 1) = "Label"
-            InfoArray(2, 1) = "Practice"
-            InfoArray(3, 1) = "Category"
-            InfoArray(4, 1) = "Date"
-            InfoArray(5, 1) = "Description"
-            
-            InfoArray(1, 2) = "G1"
-            InfoArray(2, 2) = "A1"
-            InfoArray(3, 2) = "A2"
-            InfoArray(4, 2) = "A3"
-            InfoArray(5, 2) = "A4"
-            
-            InfoArray(1, 3) = LabelString
-            InfoArray(2, 3) = PracticeString
-            InfoArray(3, 3) = "" 'Will be overwritten
-            InfoArray(4, 3) = CDate(DateString)
-            InfoArray(5, 3) = DescriptionString
-            
-            'Make a new sheet and copy over attendance information
-            Set ActivitySheet = NewActivitySheet(InfoArray)
-            Call CopyFromRecords(RecordsSheet, ActivitySheet, FindActivityLabel(ActivitySheet))
+        If Not Me.LoadActivityListBox.Selected(i) Then
+            GoTo NextActivity
         End If
+
+    'Get activity information to pass
+    InfoArray = GetFormInfo(LoadActivityForm, i)
+        If IsEmpty(InfoArray) Or Not IsArray(InfoArray) Then
+            GoTo Footer
+        End If
+        
+    'Make a new sheet and pull in attendance
+    Set ActivitySheet = ActivityNewSheet(InfoArray)
+        If ActivitySheet Is Nothing Then
+            GoTo Footer
+        End If
+        
+        Call ActivityPullAttendenceButton(ActivitySheet)
 NextActivity:
     Next i
+     
+    LoadActivityForm.Hide
    
-    LoadActivityCancelButton_Click
-        
 Footer:
-    
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
 End Sub
+
+Function LoadActivityGetInfo(RowIndex As Long) As Variant
+'Prepares a 3 x i array for passing when creating a new activity sheet
+    '(1, i) - Header
+    '(2, i) - Value
+    '(3, i) - Address
+
+    Dim HeaderRefRange As Range
+    Dim c As Range
+    Dim i As Long
+    Dim CategoryString As String
+    Dim PracticeString As String
+    Dim ReturnArray As Variant
+    Dim AddressArray As Variant
+    Dim TempArray As Variant
+    Dim ValueArray As Variant
+
+    
+
+    'Grab the activity headers from the RefSheet
+    Set HeaderRefRange = Range("ActivityHeadersList")
+        If HeaderRefRange Is Nothing Then
+            GoTo Footer
+        End If
+
+
+    'Make an array to pass
+    ReDim ReturnArray(1 To 3, 1 To HeaderRefRange.Cells.Count)
+    
+    i = 1
+    For Each c In HeaderRefRange
+        ReturnArray(1, i) = c.Value
+        
+        i = i + 1
+    Next c
+    
+    'Grab values from the form and where they go. In the future, make this programmatic
+    TempArray = Split("G1,A1,A2,A3,A4", ",") 'This is in base 0
+    
+    ReDim AddressArray(1 To UBound(TempArray) + 1)
+    
+    For i = 1 To UBound(AddressArray)
+        AddressArray(i) = TempArray(i - 1)
+    Next i
+    
+    'Grab values
+    ReDim ValueArray(1 To HeaderRefRange.Cells.Count)
+    
+    'This starts with an index of 0
+    For i = 1 To HeaderRefRange.Cells.Count
+        ValueArray(i) = Me.LoadActivityListBox.List(RowIndex, i - 1)
+    Next i
+    
+    'Category isn't here. The cell will be overwritten later and the array needs to have a blank inserted
+    i = UBound(ValueArray)
+    
+    'Make programmatic
+    ValueArray(i) = ValueArray(i - 1)
+    ValueArray(i - 1) = ValueArray(i - 2)
+    ValueArray(i - 2) = ""
+    
+    'Put them all together
+    For i = 1 To UBound(ReturnArray, 2) 'This should be exactly the same for all three
+        'This doesn't grab the category
+        If ReturnArray(1, i) = "Practice" Then 'This should always come before the category
+            PracticeString = ValueArray(i)
+            
+            Set c = Range("ActivitiesList").Find(PracticeString, , xlValues, xlWhole)
+            
+            If Not c Is Nothing Then
+                CategoryString = c.Offset(0, -1).Value
+            End If
+        End If
+
+        ReturnArray(2, i) = ValueArray(i)
+        ReturnArray(3, i) = AddressArray(i)
+        
+        'Overwrite category
+        If ReturnArray(1, i) = "Category" Then
+            ReturnArray(2, i) = CategoryString
+        End If
+    Next i
+        
+    'Return
+    If IsEmpty(ReturnArray) Or Not IsArray(ReturnArray) Then
+        GoTo Footer
+    End If
+
+    LoadActivityGetInfo = ReturnArray
+
+Footer:
+
+End Function
 
 Private Sub LoadActivityDeleteAllButton_Click()
 'Clears everything from the Records and Report sheets
@@ -140,7 +216,7 @@ Private Sub LoadActivityDeleteAllButton_Click()
     
 ClearReport:
     'Delete from the Report page
-    Call ClearReportButton
+    Call ReportClearButton
     
     'The previous sub turns these back on
     Application.EnableEvents = False
@@ -155,18 +231,19 @@ ClearReport:
     Next ActivitySheet
     
     'Hide the userform
-    LoadActivityCancelButton_Click
+    Call LoadActivityCancelButton_Click
     
 Footer:
-    
+
 End Sub
 
 Private Sub LoadActivityDeleteButton_Click()
 'Delete the selected activities, removing it from the attendance and label sheets
     
     Dim RecordsSheet As Worksheet
-    Dim TempLabelRange As Range
+    Dim LabelCell As Range
     Dim DelConfirm As Long
+    Dim DeletePrompt As String
     Dim i As Long
     Dim j As Long
     Dim SelectedLabel As String
@@ -176,11 +253,9 @@ Private Sub LoadActivityDeleteButton_Click()
     Application.DisplayAlerts = False
 
     Set RecordsSheet = Worksheets("Records Page")
-    Set TempLabelRange = RecordsSheet.Range("A1")
 
     'Make sure an activity is selected
     If LoadActivityListBox.ListIndex = -1 Then
-        MsgBox ("Please select an activity")
         GoTo Footer
     End If
     
@@ -194,36 +269,43 @@ Private Sub LoadActivityDeleteButton_Click()
     
     'Give a warning
     If j = 1 Then
-        DelConfirm = MsgBox("Are you sure you want to delete this activity? " & vbCr & _
-        "This cannot be undone.", vbQuestion + vbYesNo + vbDefaultButton2)
-    Else
-        DelConfirm = MsgBox("Are you sure you want to delete these activities? " & vbCr & _
-        "This cannot be undone.", vbQuestion + vbYesNo + vbDefaultButton2)
+        DeletePrompt = "Are you sure you want to delete this activity? " & vbCr & _
+        "This cannot be undone."
+    ElseIf j > 1 Then
+        DeletePrompt = "Are you sure you want to delete these activities? " & vbCr & _
+        "This cannot be undone."
     End If
-    
-    If DelConfirm <> vbYes Then
-        GoTo Footer
-    End If
+
+    DelConfirm = MsgBox(DeletePrompt, vbQuestion + vbYesNo + vbDefaultButton2)
+        If DelConfirm <> vbYes Then
+            GoTo Footer
+        End If
     
     'Loop throughthe listbox and delete all selected item
     j = Me.LoadActivityListBox.ListCount - 1
     For i = j To 0 Step -1
-        If Me.LoadActivityListBox.Selected(i) Then
-            SelectedLabel = Me.LoadActivityListBox.List(i, 0)
-            TempLabelRange.Value = SelectedLabel
-            
-            Call DeleteActivity(RecordsSheet, TempLabelRange)
-            TempLabelRange.ClearContents
+        If Not Me.LoadActivityListBox.Selected(i) Then
+            GoTo NextRow
         End If
+        
+        'Find the activity on the RecordsSheet
+        SelectedLabel = Me.LoadActivityListBox.List(i, 0)
+        Set LabelCell = FindRecordsLabel(RecordsSheet, , SelectedLabel)
+        
+        If Not LabelCell Is Nothing Then
+            Call RemoveRecordsActivity(RecordsSheet, LabelCell)
+        End If
+NextRow:
     Next i
 
-ListboxRemove:
     'Refresh the listbox items
     Call UserForm_Activate
     
 Footer:
-    LoadActivityCancelButton_Click
-    
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
 End Sub
 
 Private Sub LoadActivityFilterTextBox_Change()
@@ -252,15 +334,20 @@ Private Sub UserForm_Activate()
 'Populate the list box with all saved activities
 
     Dim RecordsSheet As Worksheet
+    Dim ReportSheet As Worksheet
+    Dim LabelCell As Range
     Dim LabelRange As Range
-    Dim PracticeRange As Range
-    Dim DateRange As Range
-    Dim DescriptionRange As Range
     Dim LabelHeaderRange As Range
     Dim c As Range
     Dim i As Long
+    Dim j As Long
+    Dim PracticeString As String
+    Dim DateString As String
+    Dim DescriptionString As String
+    Dim HeaderArray() As Variant
  
     Set RecordsSheet = Worksheets("Records Page")
+    Set ReportSheet = Worksheets("Report Page")
     
     'Clear out anything that's already in the list box
     If LoadActivityListBox.ListCount > 0 Then
@@ -273,37 +360,72 @@ Private Sub UserForm_Activate()
         .ColumnWidths = "150, 150, 30, 0"
     End With
     
-    'Checking that there are activities happens in parent sub
-    Set LabelRange = FindRecordsLabel(RecordsSheet)
-    
-    'If all activities are deleted, it will pull in the padding cell
-    If LabelRange.Cells.Count = 1 Then
-        If LabelRange.Value = "V BREAK" Then
-            GoTo Footer
-        End If
+    'Populate the listbox
+    If LoadActivityPopulate <> 1 Then
+        'Call LoadActivityCancelButton_Click
     End If
     
-    'Find where the values we need are
-    Set LabelHeaderRange = FindRecordsActivityHeaders(RecordsSheet)
-    Set PracticeRange = LabelHeaderRange.Find("Practice", , xlValues, xlWhole)
-    Set DateRange = LabelHeaderRange.Find("Date", , xlValues, xlWhole)
-    Set DescriptionRange = LabelHeaderRange.Find("Description", , xlValues, xlWhole)
+Footer:
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+
+End Sub
+
+Function LoadActivityPopulate() As Long
+'Grabs the activities that are not open and puts them into the listbox
+'Returns 1 on succeess, 0 otherwise
+
+    Dim RecordsSheet As Worksheet
+    Dim RecordsLabelRange As Range
+    Dim c As Range
+    Dim i As Long
+    Dim j As Long
+    Dim LabelString As String
+    Dim ValueArray As Variant
     
-    'Copy over the label information
-    i = 0
-    For Each c In LabelRange
-        With LoadActivityListBox
-            .AddItem c.Value
-            .List(i, 1) = RecordsSheet.Cells(PracticeRange.Row, c.Column)
-            .List(i, 2) = CDate(RecordsSheet.Cells(DateRange.Row, c.Column))
-            .List(i, 3) = RecordsSheet.Cells(DescriptionRange.Row, c.Column)
-        End With
+    LoadActivityPopulate = 0
+    
+    Set RecordsSheet = Worksheets("Records Page")
+    
+    'Ensure that there are activities to pull in
+    If CheckRecords(RecordsSheet) <> 1 Then
+        GoTo Footer
+    End If
+
+    'Define the list of activities
+    Set RecordsLabelRange = FindRecordsLabel(RecordsSheet)
+
+    ReDim LabelArray(1 To RecordsLabelRange.Cells.Count)
+    
+    i = 1
+    j = 0
+    For Each c In RecordsLabelRange
+        LabelString = c.Value
+        
+        'Loop through open sheets. If there is a matching activity sheet, leave the label blank
+        If Not FindSheet(LabelString) Is Nothing Then
+            LabelArray(i) = ""
+        Else
+            LabelArray(i) = LabelString
+            
+            j = j + 1
+        End If
         
         i = i + 1
     Next c
     
+    'Break if we don't have anything
+    If Not j > 0 Then
+        GoTo Footer
+    End If
+    
+    'Populate
+    Call PopulateListBox(LoadActivityForm, Me.LoadActivityListBox, LabelArray)
+    
+    LoadActivityPopulate = 1
+
 Footer:
 
-End Sub
-
-
+End Function

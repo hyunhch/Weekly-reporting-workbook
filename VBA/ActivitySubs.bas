@@ -1,69 +1,111 @@
 Attribute VB_Name = "ActivitySubs"
 Option Explicit
 
-Sub RangeBuildTest()
-    
-    Dim RosterSheet As Worksheet
-    Dim PasteSheet As Worksheet
-    Dim c As Range
-    Dim d As Range
-    Dim CheckRange As Range
-    Dim UnionRange As Range
-    Dim CopyRange As Range
-    Dim PasteRange As Range
-    Dim RosterTable As ListObject
-    Dim PasteTable As ListObject
-    
-    
-    Set PasteSheet = ActiveSheet
-    Set RosterSheet = Worksheets("Roster Page")
-    Set RosterTable = RosterSheet.ListObjects(1)
-    Set PasteRange = PasteSheet.Range("A7")
-    Set CheckRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
-    
-    For Each c In CheckRange.Offset(0, 1)
-        Set d = c.Resize(1, RosterTable.ListColumns.Count - 1)
-        Set CopyRange = BuildRange(d, CopyRange)
-    Next c
-    
-    Call CopyRows(RosterSheet, CopyRange, PasteSheet, PasteRange)
+Sub ActivityNewButtons(ActivitySheet As Worksheet)
+'Called when an activity is created or loaded
 
+    Dim NewButton As Button
+    Dim NewButtonRange As Range
+
+    'Select All
+    Set NewButtonRange = ActivitySheet.Range("A5:B5")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "SelectAllButton"
+        .Caption = "Select All"
+    End With
+
+    'Delete Row
+    Set NewButtonRange = ActivitySheet.Range("C5:D5")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "RemoveSelectedButton"
+        .Caption = "Delete Row"
+    End With
+
+    'Delete activity button
+    Set NewButtonRange = ActivitySheet.Range("J2:K2")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "ActivityDeleteButton"
+        .Caption = "Delete Activity"
+    End With
+    
+    'Save Activity button
+    Set NewButtonRange = ActivitySheet.Range("G2:H3")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "ActivitySaveButton"
+        .Caption = "Save Activity"
+    End With
+    
+    'Close Activity button
+    Set NewButtonRange = ActivitySheet.Range("G5:H5")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "ActivityCloseButton"
+        .Caption = "Close Sheet"
+    End With
+    
+    'Pull attendence button
+    Set NewButtonRange = ActivitySheet.Range("E5:F5")
+    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
+        NewButtonRange.Width, NewButtonRange.Height)
+    
+    With NewButton
+        .OnAction = "ActivityPullAttendenceButton"
+        .Caption = "Pull Attendence"
+    End With
 
 End Sub
 
-Function NewActivitySheet(InfoArray() As Variant) As Worksheet
+Function ActivityNewSheet(InfoArray As Variant) As Worksheet
 'Called from the new activity form, returns a completed activity sheet
 'Activates the sheet if it's already open and ends the subroutine
 'The array is 2D and contains the information to be inserted and where it's to be inserted
-'(1, 1) -> {What1}
-'(1, 2) -> {Address1}
-'(1, 3) -> {Value1}, etc.
+    '(1, i) -> Header
+    '(2, i) -> Value
+    '(3, i) -> Address
 
     Dim RosterSheet As Worksheet
     Dim RecordsSheet As Worksheet
     Dim ActivitySheet As Worksheet
-    Dim ActivityNameRange As Range
-    Dim RosterCopyRange As Range
     Dim RecordsLabelCell As Range
-    Dim ActivityLabelCell As Range
+    Dim RecordsAttendanceRange As Range
+    Dim RosterNameRange As Range
+    Dim ActivityNameRange As Range
     Dim CopyRange As Range
     Dim PasteRange As Range
-    Dim DelRange As Range
     Dim c As Range
     Dim d As Range
     Dim i As Long
     Dim LabelString As String
-    Dim HeaderArray() As Variant
     Dim RosterTable As ListObject
     Dim ActivityTable As ListObject
-
+    
     Set RosterSheet = Worksheets("Roster Page")
     Set RecordsSheet = Worksheets("Records Page")
+    Set RosterTable = RosterSheet.ListObjects(1)
     
     'Grab the label
     For i = 1 To UBound(InfoArray)
-        If InfoArray(i, 1) = "Label" Then
-            LabelString = InfoArray(i, 3)
+        If InfoArray(1, i) = "Label" Then
+            LabelString = InfoArray(2, i)
+            
+            If Not Len(LabelString) > 0 Then
+                GoTo Footer
+            End If
+            
             GoTo LabelCheck
         End If
     Next i
@@ -74,7 +116,6 @@ LabelCheck:
     
     If Not ActivitySheet Is Nothing Then
         'MsgBox ("Sheet already open")
-        Set NewActivitySheet = ActivitySheet
         ActivitySheet.Activate
         
         GoTo Footer
@@ -83,73 +124,66 @@ LabelCheck:
     'If it isn't, create a new sheet at the end of the workbook, add activity information and buttons
     ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)).Name = LabelString
     Set ActivitySheet = Worksheets(LabelString)
-    Set PasteRange = ActivitySheet.Range("B7")
-    Set RosterTable = RosterSheet.ListObjects(1)
-    
+    Set PasteRange = ActivitySheet.Range("A7")
+
     Call UnprotectSheet(ActivitySheet)
-    Call NewActivityText(ActivitySheet, InfoArray)
-    Call NewActivityButtons(ActivitySheet)
+    Call ActivityNewText(ActivitySheet, InfoArray)
+    Call ActivityNewButtons(ActivitySheet)
     
     'Make a blank table, required for copying students
-    Set ActivityTable = CreateActivityTable(ActivitySheet)
-    Set ActivityLabelCell = FindActivityLabel(ActivitySheet)
+    Set ActivityTable = MakeActivityTable(ActivitySheet)
     
     'If the activity already exists, load it from the RecordsSheet. Otherwise, pull in students checked on RosterSheet
-    Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, ActivityLabelCell)
+    Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, , LabelString)
     
-    If RecordsLabelCell Is Nothing Then
-        Set c = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
-        Set RosterCopyRange = c.Offset(0, 1)
-    ElseIf RecordsLabelCell.Value = "V BREAK" Then
-        Set c = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
-        Set RosterCopyRange = c.Offset(0, 1)
-    Else
-        Set c = CopyFromRecords(RecordsSheet, ActivitySheet, ActivityLabelCell)
-        Set RosterCopyRange = FindName(c, RosterTable.ListColumns("First").DataBodyRange)
-    End If
+    If RecordsLabelCell Is Nothing Then 'Label not found, pull from the roster
+        Set CopyRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
+    Else 'Label found
+        Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
+        Set d = FindRecordsAttendance(RecordsSheet, , RecordsLabelCell)
+             If d Is Nothing Then
+                GoTo MakeTable
+            End If
 
-    'Redefine the range to copy as the entire table row and copy over
-    For Each c In RosterCopyRange
-        Set d = c.Resize(1, RosterTable.ListColumns.Count - 1)
-        Set CopyRange = BuildRange(d, CopyRange)
-    Next c
+        Set RecordsAttendanceRange = FindStudentAttendance(RecordsSheet, d)
+            If RecordsAttendanceRange Is Nothing Then
+                GoTo MakeTable
+            End If
+            
+        'Match names to the Roster
+        Set c = FindName(RecordsAttendanceRange.Offset(0, -RecordsAttendanceRange.Column + 1), RosterNameRange)
+        
+            If c Is Nothing Then
+                GoTo MakeTable
+            End If
+        
+        Set CopyRange = c '.Offset(0, -1)
+    End If
     
-    Call CopyRows(RosterSheet, CopyRange, ActivitySheet, PasteRange)
+    'Label not found and no students checked, break. This shouldn't happen
+    If CopyRange Is Nothing Then
+        GoTo Footer
+    End If
     
-    'Make a table
-    Set ActivityTable = CreateActivityTable(ActivitySheet)
+    'Copy from roster if it's a new activity or there are no matches
+    If RecordsLabelCell Is Nothing Then
+        Call CopyRow(RosterSheet, CopyRange, ActivitySheet, PasteRange)
+    Else
+        Call CopyFromRecords(ActivitySheet, RecordsLabelCell)
+    End If
+        
+MakeTable:
+    Set ActivityTable = MakeActivityTable(ActivitySheet)
     
     If ActivityTable.ListRows.Count < 1 Then 'This shouldn't happen
         GoTo ProtectSheet
     End If
     
-    Call FormatTable(ActivitySheet, ActivityTable)
+    Call TableFormat(ActivitySheet, ActivityTable)
     
     'Clean up. These shouldn't be needed
     Set ActivityNameRange = ActivityTable.ListColumns("First").DataBodyRange
-    Set c = FindDuplicate(ActivityNameRange)
-    Set d = FindBlanks(ActivitySheet, ActivityNameRange)
-    
-    If Not c Is Nothing Then
-        Set DelRange = c
-    End If
-    
-    If Not d Is Nothing Then
-        If DelRange Is Nothing Then
-            Set DelRange = d
-        Else
-            Set DelRange = Union(DelRange, d)
-        End If
-    End If
-    
-    If Not DelRange Is Nothing Then
-        Call RemoveRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange, DelRange)
-    End If
-
-    'Save the activity. This can create an empty activity on the Records Sheet [Disabling this for now. I'm not sure how useful it will be]
-    'Set ActivityLabelCell = ActivitySheet.Range("1:1").Find(LabelString, , xlValues, xlWhole)
-    
-    'Call SaveActivity(ActivitySheet, RecordsSheet, ActivityLabelCell)
+    Call RemoveBadRows(ActivitySheet, ActivityTable.DataBodyRange, ActivityNameRange)
     
 ProtectSheet:
     'Apply protection to the first five rows and activate
@@ -161,16 +195,20 @@ ProtectSheet:
        .Activate
     End With
 
-    Set NewActivitySheet = ActivitySheet
+    Set ActivityNewSheet = ActivitySheet
 
 Footer:
 
 End Function
 
-Sub NewActivityText(ActivitySheet As Worksheet, InfoArray() As Variant)
+Sub ActivityNewText(ActivitySheet As Worksheet, InfoArray As Variant)
 'Puts in text and formatting on a new activity sheet
-
+    '(1, i) -> Header
+    '(2, i) -> Value
+    '(3, i) -> Address
+    
     Dim RefSheet As Worksheet
+    Dim CategoryRange As Range
     Dim c As Range
     Dim i As Long
     Dim PracticeString As String
@@ -179,23 +217,25 @@ Sub NewActivityText(ActivitySheet As Worksheet, InfoArray() As Variant)
     Set RefSheet = Worksheets("Ref Tables")
     Set PracticeTable = RefSheet.ListObjects("ActivitiesTable")
 
-    'Put in all text from the passed array
-    For i = 1 To UBound(InfoArray)
-        Set c = ActivitySheet.Range(InfoArray(i, 2))
+    'Put in all text from the passed array. Everything in the fist x dimension is place at the address listed in the third. The second dimension goes directly to the right
+    For i = 1 To UBound(InfoArray, 2)
+        Set c = ActivitySheet.Range(InfoArray(3, i))
         
         With c
-            .Value = InfoArray(i, 1)
+            .Value = InfoArray(1, i)
             .Font.Bold = True
             .HorizontalAlignment = xlRight
-            .Offset(0, 1).Value = InfoArray(i, 3)
+            .Offset(0, 1).Value = InfoArray(2, i)
 
             .Resize(1, 2).Borders(xlEdgeBottom).LineStyle = xlContinuous
             .Resize(1, 2).Borders(xlEdgeBottom).Weight = xlMedium
             .Resize(1, 2).WrapText = False
         End With
         
-        If InfoArray(i, 1) = "Practice" Then
-            PracticeString = InfoArray(i, 3)
+        If InfoArray(1, i) = "Practice" Then
+            PracticeString = InfoArray(2, i)
+        ElseIf InfoArray(1, i) = "Category" Then
+            Set CategoryRange = c.Offset(0, 1)
         End If
     Next i
     
@@ -203,7 +243,7 @@ Sub NewActivityText(ActivitySheet As Worksheet, InfoArray() As Variant)
     Set c = PracticeTable.ListColumns("Practice").DataBodyRange.Find(PracticeString, , xlValues, xlWhole) 'One column to the right of the category
     
     If Not c Is Nothing Then
-        ActivitySheet.Range("A:A").Find("Category", , xlValues, xlWhole).Offset(0, 1).Value = c.Offset(0, -1).Value
+        CategoryRange = c.Offset(0, -1).Value
     End If
     
     'Autofit the first column
@@ -213,7 +253,64 @@ Footer:
 
 End Sub
 
-Sub SaveActivity(ActivitySheet As Worksheet, RecordsSheet As Worksheet, LabelCell As Range, Optional ShowMessage As String)
+Sub ActivityPullAllAttendance()
+'Helper function that loops through all sheets and calls to repull attendance
+
+
+End Sub
+
+Sub ActivityPullAttendence(ActivitySheet As Worksheet, ActivityNameRange As Range, LabelCell As Range)
+'Pulls attendance for all students marked "present" in the Records sheet to an activity Sheet
+
+    Dim RecordsSheet As Worksheet
+    Dim RecordsNameRange As Range
+    Dim RecordsAttendanceRange As Range
+    Dim RecordsLabelRange As Range
+    Dim RecordsPresentRange As Range
+    Dim RecordsAbsentRange As Range
+    Dim ActivityPresentRange As Range
+    Dim MatchCell As Range
+    Dim c As Range
+    Dim d As Range
+
+    Set RecordsSheet = Worksheets("Records Page")
+    
+    'Check if there are both students and activities
+    If CheckRecords(RecordsSheet) <> 1 Then
+        GoTo Footer
+    End If
+    
+    'Check that there are students
+    If CheckTable(ActivitySheet) > 2 Then
+        GoTo Footer
+    End If
+    
+    Set RecordsNameRange = FindRecordsName(RecordsSheet)
+    Set RecordsLabelRange = FindRecordsLabel(RecordsSheet, LabelCell)
+    Set RecordsAttendanceRange = FindRecordsAttendance(RecordsSheet, , RecordsLabelRange)
+
+    'Clear current checks on activity sheet and copy over saved Attendance
+    ActivityNameRange.Offset(0, -1).Value = ""
+
+    'Find all students marked present
+    Set d = FindStudentAttendance(RecordsSheet, RecordsAttendanceRange, "Present")
+    If d Is Nothing Then
+        GoTo Footer
+    End If
+    
+    Set RecordsPresentRange = d.Offset(0, -d.Column + 1)
+    For Each c In RecordsPresentRange
+        Set MatchCell = FindName(c, ActivityNameRange)
+        If Not MatchCell Is Nothing Then
+            MatchCell.Offset(0, -1).Value = "a"
+        End If
+    Next c
+
+Footer:
+
+End Sub
+
+Sub ActivitySave(ActivitySheet As Worksheet, RecordsSheet As Worksheet, LabelCell As Range, Optional ShowMessage As String)
 'Saves the indicated activity. Called when an activity is first made and when it's manually saved
 'Silent by default, shows a message if passed
 
@@ -283,118 +380,8 @@ Footer:
 
 End Sub
 
-Sub DeleteActivity(RecordsSheet As Worksheet, LabelCell As Range)
-'Deletes the activity from the Records Page, removes it from the Report Page, and deletes any open Activity Sheet
 
-    Dim ReportSheet As Worksheet
-    Dim ActivitySheet As Worksheet
-    Dim RecordsLabelRange As Range
-    Dim ReportLabelRange As Range
-    Dim ActivityLabelRange As Range
-    
-    Set ReportSheet = Worksheets("Report Page")
-    
-    'Make sure the label exists on the Records sheet
-    Set RecordsLabelRange = FindRecordsLabel(RecordsSheet, LabelCell)
-    
-    If RecordsLabelRange Is Nothing Then
-        GoTo CheckReport
-    ElseIf RecordsLabelRange.Value <> LabelCell.Value Then
-        GoTo CheckReport
-    End If
-    
-    RecordsLabelRange.EntireColumn.Delete
-    
-CheckReport:
-    'Make sure the label exists on the Report sheet
-    Set ReportLabelRange = FindReportLabel(ReportSheet, LabelCell)
-    
-    If ReportLabelRange Is Nothing Then
-        GoTo CheckSheets
-    ElseIf ReportLabelRange.Value <> LabelCell.Value Then
-        GoTo CheckSheets
-    End If
-    
-    ReportLabelRange.EntireRow.Delete
 
-CheckSheets:
-    'If there is an open sheet, delete it
-    For Each ActivitySheet In ThisWorkbook.Sheets
-        If ActivitySheet.Range("A1").Value = "Practice" And Not ActivitySheet.Range("1:1").Find(LabelCell.Value, , xlValues, xlWhole) Is Nothing Then
-            ActivitySheet.Delete
-        End If
-    Next ActivitySheet
-    
-Footer:
 
-End Sub
-
-Sub NewActivityButtons(ActivitySheet As Worksheet)
-'Called when an activity is created or loaded
-
-    Dim NewButton As Button
-    Dim NewButtonRange As Range
-
-    'Select All
-    Set NewButtonRange = ActivitySheet.Range("A5:B5")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "SelectAllButton"
-        .Caption = "Select All"
-    End With
-
-    'Delete Row
-    Set NewButtonRange = ActivitySheet.Range("C5:D5")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "RemoveSelectedButton"
-        .Caption = "Delete Row"
-    End With
-
-    'Delete activity button
-    Set NewButtonRange = ActivitySheet.Range("J2:K2")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "DeleteActivityButton"
-        .Caption = "Delete Activity"
-    End With
-    
-    'Save Activity button
-    Set NewButtonRange = ActivitySheet.Range("G2:H3")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "SaveActivityButton"
-        .Caption = "Save Activity"
-    End With
-    
-    'Close Activity button
-    Set NewButtonRange = ActivitySheet.Range("G5:H5")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "CloseActivityButton"
-        .Caption = "Close Sheet"
-    End With
-    
-    'Pull attendence button
-    Set NewButtonRange = ActivitySheet.Range("E5:F5")
-    Set NewButton = ActivitySheet.Buttons.Add(NewButtonRange.Left, NewButtonRange.Top, _
-        NewButtonRange.Width, NewButtonRange.Height)
-    
-    With NewButton
-        .OnAction = "PullAttendenceButton"
-        .Caption = "Pull Attendence"
-    End With
-
-End Sub
 
 
