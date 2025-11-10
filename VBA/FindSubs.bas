@@ -489,7 +489,10 @@ Function FindRecordsLabel(RecordsSheet As Worksheet, Optional LabelCell As Range
     
     'If no activities
     If LCell.Value = "V BREAK" Then
-        Set FindRecordsLabel = FCell
+        If Not Len(LabelString) > 0 Then 'Return nothing if a label was passed
+            Set FindRecordsLabel = FCell
+        End If
+        
         GoTo Footer
     End If
     

@@ -246,6 +246,10 @@ Sub ActivityDeleteButton()
     Call UnprotectSheet(ActivitySheet)
     Call RemoveRecordsActivity(RecordsSheet, ActivityLabelCell)
 
+    'If the activity hasn't been saved, RemoveRecordsActivity() won't delete the sheet
+    If Not ActivitySheet Is Nothing Then
+        ActivitySheet.Delete
+    End If
     
 Footer:
     Call ResetProtection
