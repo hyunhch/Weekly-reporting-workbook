@@ -61,22 +61,24 @@ Sub SelectAllButton()
 'Assigns value in Select column to "a" or ""
 'The report sheet doesn't have a table, consider changing that in the future
 
-    Dim CheckSheet As Worksheet
-    Dim CheckRange As Range
+    Dim SelectSheet As Worksheet
+    Dim SelectRange As Range
     Dim c As Range
     Dim i As Long
     Dim CheckRows As Long
-    Dim TargetTable As ListObject
+    Dim SelectTable As ListObject
     
-    Set CheckSheet = ActiveSheet
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.EnableEvents = False
     
-    Call UnprotectSheet(CheckSheet)
+    Set SelectSheet = ActiveSheet
     
     'If Check for a table with rows
-    If CheckSheet.Name <> "Report Page" Then
-        i = CheckReport(CheckSheet)
+    If SelectSheet.Name = "Report Page" Then
+        i = CheckReport(SelectSheet)
     Else
-        i = CheckTable(CheckSheet)
+        i = CheckTable(SelectSheet)
     End If
     
     If i > 2 Then
@@ -84,37 +86,33 @@ Sub SelectAllButton()
     End If
         
     'Define range to search
-    Set TargetTable = CheckSheet.ListObjects(1)
-    Set c = TargetTable.ListColumns("Select").DataBodyRange
-    Set CheckRange = c.SpecialCells(xlCellTypeVisible)
-        If CheckRange Is Nothing Then 'No visible cells
-            GoTo Footer
-        End If
-    
-    CheckRows = CheckRange.Rows.Count
-    c.Font.Name = "Marlett"
-    
+    Set SelectTable = SelectSheet.ListObjects(1)
+    Set SelectRange = SelectTable.ListColumns("Select").DataBodyRange
+
     'Exclude first row on Report sheet
-    If CheckSheet.Name = "Report Page" Then
-        If CheckRange.Rows.Count < 2 Then
+    If SelectSheet.Name = "Report Page" Then
+        If Not SelectRange.Rows.Count > 1 Then
             GoTo Footer
-        Else
-            Set CheckRange = CheckRange.Offset(1, 0).Resize(CheckRange.Rows.Count - 1, 1)
-            CheckRows = CheckRows - 1
         End If
+        
+        Set c = SelectRange
+        Set SelectRange = c.Offset(1, 0).Resize(c.Rows.Count - 1, 1)
     End If
     
     'Check all if any are blank, uncheck all if none are blank
-    'Only apply to visible cells
-    For Each c In CheckRange
-        If c.Value <> "a" Then
-            CheckRange.Value = "a"
-            
-            GoTo Footer
-        End If
-    Next c
+    Call UnprotectSheet(SelectSheet)
     
-    CheckRange.Value = ""
+    With SelectRange
+        .Font.Name = "Marlett"
+        i = .Cells.Count
+        
+        'Only apply to visible cells
+        If Application.CountIf(SelectRange, "a") = i Then
+            .SpecialCells(xlCellTypeVisible).ClearContents
+        Else
+            .SpecialCells(xlCellTypeVisible).Value = "a"
+        End If
+    End With
 
 Footer:
     Call ResetProtection
@@ -124,5 +122,4 @@ Footer:
     Application.DisplayAlerts = True
 
 End Sub
-
 

@@ -157,7 +157,7 @@ Sub RosterParseButton()
     
     'Remake the Roster table to include new students, if any
     Set RosterTable = MakeRosterTable(RosterSheet)
-    
+
     'See if we have any students. Break if we don't
     i = CheckTable(RosterSheet)
         If i > 2 Then

@@ -32,7 +32,6 @@ Private Sub CommandButton1_Click()
     
     Next i
 
-
 End Sub
 
 Private Sub NewActivityCancelButton_Click()
@@ -200,6 +199,8 @@ Private Sub UserForm_Activate()
 
     NewActivityForm.Height = 395
     NewActivityForm.Width = 371
+    
+    Call NewActivityGetText
 
 End Sub
 
@@ -273,3 +274,26 @@ Footer:
 
 End Function
 
+Private Sub NewActivityGetText()
+'Copy a label and description typed onto the RosterSheet
+'Done because copy/paste into a form isn't possible with MacOS
+
+    Dim RosterSheet As Worksheet
+    Dim c As Range
+
+    Set RosterSheet = Worksheets("Roster Page")
+    
+    'Find the cells next to "Label" and "Description". Make this programatic in the future
+    Set c = RosterSheet.Range("J4")
+        If Len(c.Value) > 0 Then
+            Me.NewActivityLabelBox.Value = c.Value
+        End If
+        
+    Set c = RosterSheet.Range("J5")
+        If Len(c.Value) > 0 Then
+            Me.NewActivityDescriptionBox.Value = c.Value
+        End If
+
+Footer:
+    
+End Sub

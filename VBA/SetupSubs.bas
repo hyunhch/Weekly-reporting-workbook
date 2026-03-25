@@ -16,6 +16,9 @@ Sub TesterClearTables()
     Dim RecordsSheet As Worksheet
     Dim ReportSheet As Worksheet
     Dim RosterSheet As Worksheet
+    Dim NarrativeSheet As Worksheet
+    Dim DirectorySheet As Worksheet
+    Dim OtherSheet As Worksheet
     Dim i As Long
     Dim ClearTable As ListObject
     Dim btn As Button
@@ -25,6 +28,9 @@ Sub TesterClearTables()
     Set ReportSheet = Worksheets("Report Page")
     Set RosterSheet = Worksheets("Roster Page")
     Set RecordsSheet = Worksheets("Records Page")
+    'Set NarrativeSheet = Worksheets("Narrative Page")
+    'Set DirectorySheet = Worksheets("Directory Page")
+    'Set OtherSheet = Worksheets("Other Page")
     
     On Error Resume Next
     
@@ -59,6 +65,30 @@ Sub TesterClearTables()
         .Buttons.Delete
         .Columns.UseStandardWidth = True
     End With
+    
+    'Call UnprotectSheet(NarrativeSheet)
+    'With NarrativeSheet
+        '.Cells.ClearContents
+        '.Cells.ClearFormats
+        '.Buttons.Delete
+        '.Columns.UseStandardWidth = True
+    'End With
+    
+    'Call UnprotectSheet(DirectorySheet)
+    'With DirectorySheet
+        '.Cells.ClearContents
+        '.Cells.ClearFormats
+        '.Buttons.Delete
+        '.Columns.UseStandardWidth = True
+    'End With
+    
+    'Call UnprotectSheet(OtherSheet)
+    'With OtherSheet
+        '.Cells.ClearContents
+        '.Cells.ClearFormats
+        '.Buttons.Delete
+        '.Columns.UseStandardWidth = True
+    'End With
     
     If Not Worksheets(1).Name = "University Ref" Then
         Worksheets(1).Name = "University Ref"
@@ -202,6 +232,7 @@ Sub ChooseProgram(ProgramString As String)
     Call TableResetHeaders(RosterSheet, c, HeaderArray)
     Call MakeTable(RosterSheet)
     Call RosterSheetButtons
+    Call RosterSheetText
     
     'Text on the Records Sheet
     Call RecordsSheetText
@@ -376,7 +407,7 @@ Sub CoverSheetText(RefSheet As Worksheet, CoverSheet As Worksheet, ProgramString
         TableNameString = TableNameArray(i)
         Set TempTable = RefSheet.ListObjects(TableNameString)
         Set CopyRange = TempTable.Range
-        Set PasteRange = c.Resize(TempTable.Range.Rows.Count, 1).Offset(0, (i - 1) * 2) 'Put a space between each table
+        Set PasteRange = c.Resize(TempTable.Range.Rows.Count, 1).Offset(0, (i - 1)) '* 2) 'Put a space between each table ****I don't like how the space looks
         
         With PasteRange
             .Value(11) = CopyRange.Value(11)
@@ -550,6 +581,34 @@ Sub RosterSheetButtons()
         TempArray = ButtonArray(i)
         Call MakeButton(RosterSheet, TempArray)
     Next i
+
+End Sub
+
+Sub RosterSheetText()
+'Called when the program is chosen
+
+    Dim RosterSheet As Worksheet
+    Dim c As Range
+
+    Set RosterSheet = Worksheets("Roster Page")
+    
+    'Make this programmatic
+    Set c = RosterSheet.Range("I4")
+    
+    Call UnprotectSheet(RosterSheet)
+    
+    c.Value = "Label"
+    c.Offset(1, 0).Value = "Description"
+    
+    'Right hand align, bold, underline
+    With c.Resize(2, 1)
+        .Font.Bold = True
+        .HorizontalAlignment = xlRight
+        .Columns.AutoFit
+    End With
+    
+    c.Resize(1, 3).Borders(xlEdgeBottom).LineStyle = xlContinuous
+    c.Offset(1, 0).Resize(1, 3).Borders(xlEdgeBottom).LineStyle = xlContinuous
 
 End Sub
 

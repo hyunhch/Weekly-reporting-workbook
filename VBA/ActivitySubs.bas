@@ -137,7 +137,7 @@ LabelCheck:
     Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, , LabelString)
     
     If RecordsLabelCell Is Nothing Then 'Label not found, pull from the roster
-        Set CopyRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
+        Set CopyRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)) 'Only visible students
     Else 'Label found
         Set RosterNameRange = RosterTable.ListColumns("First").DataBodyRange
         Set d = FindRecordsAttendance(RecordsSheet, , RecordsLabelCell)

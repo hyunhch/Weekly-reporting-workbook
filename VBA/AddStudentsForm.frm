@@ -58,7 +58,7 @@ Private Sub AddStudentsConfirmButton_Click()
     End If
     
     Set RosterSheet = Worksheets("Roster Page")
-    Set RosterCheckedRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange)
+    Set RosterCheckedRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)) 'Only visible students
         If RosterCheckedRange Is Nothing Then
             GoTo Footer
         End If

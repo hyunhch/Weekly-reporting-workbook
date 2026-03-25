@@ -153,7 +153,7 @@ Function MakeRosterTable(RosterSheet As Worksheet) As ListObject
     Dim HeaderArray As Variant
     
     Set c = RosterSheet.Range("A6")
-    
+
     'Remove the table, if there is one
     If CheckTable(RosterSheet) < 4 Then
         RosterSheet.AutoFilterMode = False
@@ -168,7 +168,8 @@ Function MakeRosterTable(RosterSheet As Worksheet) As ListObject
     'Find the range for the new table, break if there is nothing but the header
     Set RosterTableRange = FindTableRange(RosterSheet)
         If Not RosterTableRange.Rows.Count > 1 Then
-            GoTo Footer
+            'GoTo Footer
+            'Removing this so that we always have a table, and can add columns before adding students
         End If
     
     'Make new table

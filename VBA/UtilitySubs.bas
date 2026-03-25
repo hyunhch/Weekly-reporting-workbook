@@ -481,10 +481,8 @@ Sub ResetProtection()
     ChangeSheet.Protect , userinterfaceonly:=True
 
     'Lock/Unlock areas
-    CoverSheet.Range("B3:B5").Locked = False
-    
     RosterSheet.Cells.Locked = False
-    RosterSheet.Range("A1:A5").EntireRow.Locked = True
+    RosterSheet.Range("A1:H5").Locked = True
     
     'Lock the entire page besides the "Select: Column
     ReportSheet.Cells.Locked = True

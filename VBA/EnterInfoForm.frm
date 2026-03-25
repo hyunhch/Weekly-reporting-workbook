@@ -95,7 +95,7 @@ Private Sub UserForm_Activate()
     EnterInfoForm.Width = 242
     
     Me.EnterInfoNameBox.Value = ""
-    Me.EnterInfoDateBox.Value = ""
+    Me.EnterInfoDateBox.Value = "mm/dd/yyyy"
     Me.EnterInfoCenterComboBox.Clear
     
     For Each c In Range("CentersList")

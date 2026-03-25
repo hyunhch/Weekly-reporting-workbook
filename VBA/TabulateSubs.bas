@@ -193,7 +193,7 @@ Function TabulateDemoMac(SearchRange As Range, SearchType As String) As Variant
     For Each c In SearchRange
         'Change the values for low income and first generation from "yes" to the search term
         If c.Value = "Yes" Then
-            ValueString = SearchTerm
+            ValueString = SearchType
         Else
             ValueString = c.Value
         End If
@@ -251,6 +251,8 @@ Function TabulateDemoMac(SearchRange As Range, SearchType As String) As Variant
                 For j = 1 To UBound(CountArray, 2)
                     If ValueString = CountArray(1, j) Then
                         CountArray(2, j) = CountArray(2, j) + 1
+                        
+                        GoTo NextValue
                     End If
                 Next j
                 
@@ -258,8 +260,8 @@ Function TabulateDemoMac(SearchRange As Range, SearchType As String) As Variant
                 If InStr(1, CountArray(1, j - 1), "Other") > 0 Then
                     CountArray(2, j - 1) = CountArray(2, j - 1) + 1
                 End If
-            Next i
 NextValue:
+            Next i
     End Select
 
     TabulateDemoMac = CountArray
