@@ -81,6 +81,8 @@ NextActivity:
     LoadActivityForm.Hide
    
 Footer:
+    Call ResetProtection
+
     Application.EnableEvents = True
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True

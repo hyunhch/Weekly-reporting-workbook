@@ -1,3 +1,7 @@
+Version 1.2.9
+
+	Fixed bug caused by not unprotecting the Roster Page when creating, loading, or adding students to an activity
+
 Version 1.2.8	
 	
 	The Add New Activity form can now have multiple lines and scroll vertically in the Decription box

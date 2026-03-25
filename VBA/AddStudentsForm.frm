@@ -57,6 +57,8 @@ Private Sub AddStudentsConfirmButton_Click()
         GoTo Footer
     End If
     
+    Call UnprotectSheet(RosterSheet)
+    
     Set RosterSheet = Worksheets("Roster Page")
     Set RosterCheckedRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)) 'Only visible students
         If RosterCheckedRange Is Nothing Then
@@ -133,6 +135,7 @@ AddNew:
    
 Footer:
     AddStudentsForm.Hide
+    Call ResetProtection
     
     Application.EnableEvents = True
     Application.ScreenUpdating = True

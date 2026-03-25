@@ -121,6 +121,8 @@ Private Sub NewActivityConfirmButton_Click()
     NewActivityForm.Hide
     
 Footer:
+    Call ResetProtection
+
     Application.EnableEvents = True
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True

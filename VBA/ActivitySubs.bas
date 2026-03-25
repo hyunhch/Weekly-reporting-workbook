@@ -136,6 +136,8 @@ LabelCheck:
     'If the activity already exists, load it from the RecordsSheet. Otherwise, pull in students checked on RosterSheet
     Set RecordsLabelCell = FindRecordsLabel(RecordsSheet, , LabelString)
     
+    Call UnprotectSheet(RosterSheet)
+    
     If RecordsLabelCell Is Nothing Then 'Label not found, pull from the roster
         Set CopyRange = FindChecks(RosterTable.ListColumns("Select").DataBodyRange.SpecialCells(xlCellTypeVisible)) 'Only visible students
     Else 'Label found
