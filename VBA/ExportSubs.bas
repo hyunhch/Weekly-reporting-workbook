@@ -136,6 +136,7 @@ Function ExportDetailedSheet(OldBook As Workbook, NewBook As Workbook, Optional 
     Dim i As Long
     Dim j As Long
     Dim k As Long
+    Dim NewTable As ListObject
     Dim HeaderArray As Variant
     
     ExportDetailedSheet = 0
@@ -203,7 +204,13 @@ Function ExportDetailedSheet(OldBook As Workbook, NewBook As Workbook, Optional 
     Next c
     
     'Make a table
-    Call MakeTable(NewSheet)
+    Set NewTable = MakeTable(NewSheet)
+    
+    'Format the date
+    Set c = NewTable.HeaderRowRange.Find("Date", , xlValues, xlWhole)
+        If Not c Is Nothing Then
+            NewTable.ListColumns("Date").DataBodyRange.NumberFormat = "mm/dd/yyyy"
+        End If
     
     'Delete the first column
     NewSheet.Range("A1").EntireColumn.Delete

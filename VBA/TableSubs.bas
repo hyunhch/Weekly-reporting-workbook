@@ -10,6 +10,8 @@ Sub TableFormat(TargetSheet As Worksheet, TargetTable As ListObject)
     Dim GradeRange As Range
     Dim CreditsRange As Range
     Dim MajorRange As Range
+    Dim FirstGenRange As Range
+    Dim LowIncomeRange As Range
     Dim c As Range
     Dim FormulaString1 As String
     Dim FormulaString2 As String
@@ -63,6 +65,8 @@ Sub TableFormat(TargetSheet As Worksheet, TargetTable As ListObject)
     'Credit hours don't need the reference table, add majors to validation
     Set CreditsRange = TargetTable.ListColumns("Credits").DataBodyRange
     Set MajorRange = TargetTable.ListColumns("Major").DataBodyRange
+    Set FirstGenRange = TargetTable.ListColumns("First Generation").DataBodyRange
+    Set LowIncomeRange = TargetTable.ListColumns("Low Income").DataBodyRange
     
     For Each c In CreditsRange
         FormulaString1 = "=AND(NOT(ISNUMBER(" + c.Address + ")),"
@@ -82,6 +86,27 @@ Sub TableFormat(TargetSheet As Worksheet, TargetTable As ListObject)
         With c.FormatConditions(2)
             .StopIfTrue = False
             .Interior.ColorIndex = 45
+        End With
+    Next c
+
+    'Flag First Generation and Low Income
+    For Each c In FirstGenRange
+        FormulaString1 = "=AND(COUNTIFS("
+        FormulaString2 = "," & "Trim(" & c.Address & ")) < 1, NOT(ISBLANK(" & c.Address & ")))"
+        c.FormatConditions.Add Type:=xlExpression, Formula1:=FormulaString1 & "FirstGenerationList" & FormulaString2
+        With c.FormatConditions(2)
+            .StopIfTrue = False
+            .Interior.Color = vbRed
+        End With
+    Next c
+    
+    For Each c In LowIncomeRange
+        FormulaString1 = "=AND(COUNTIFS("
+        FormulaString2 = "," & "Trim(" & c.Address & ")) < 1, NOT(ISBLANK(" & c.Address & ")))"
+        c.FormatConditions.Add Type:=xlExpression, Formula1:=FormulaString1 & "LowIncomeList" & FormulaString2
+        With c.FormatConditions(2)
+            .StopIfTrue = False
+            .Interior.Color = vbRed
         End With
     Next c
 

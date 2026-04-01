@@ -245,10 +245,13 @@ Sub ActivityDeleteButton()
     'Remove from the Records sheet. This also removes from the Report and closes the Activity sheet
     Call UnprotectSheet(ActivitySheet)
     Call RemoveRecordsActivity(RecordsSheet, ActivityLabelCell)
-
+    
     'If the activity hasn't been saved, RemoveRecordsActivity() won't delete the sheet
+    'If removed by RemoveRecordsActivity(), the If statement here doesn't work and it tries to delete anyway. Unsure why
     If Not ActivitySheet Is Nothing Then
+        On Error Resume Next
         ActivitySheet.Delete
+        On Error GoTo 0
     End If
     
 Footer:
